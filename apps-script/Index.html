@@ -7,16 +7,21 @@
     <style>
       :root {
         color-scheme: light;
-        --bg: #f7f3ea;
-        --surface: #fffaf0;
+        --bg: #f2eee6;
+        --surface: #fffdfa;
         --surface-strong: #ffffff;
-        --ink: #24211c;
-        --muted: #756f63;
-        --line: #ded6c8;
-        --accent: #1f6f63;
-        --accent-ink: #ffffff;
-        --warn: #9b3d2f;
-        --shadow: 0 12px 30px rgba(42, 36, 24, 0.08);
+        --ink: #20201c;
+        --muted: #726c61;
+        --line: #d9d0c2;
+        --accent: #166f61;
+        --accent-soft: #e6f1ed;
+        --blue: #315f8c;
+        --blue-soft: #e9f0f8;
+        --amber: #ab7027;
+        --amber-soft: #f6ebdb;
+        --danger: #9b4741;
+        --danger-soft: #f5e8e6;
+        --shadow: 0 16px 46px rgba(35, 30, 20, 0.1);
       }
 
       * {
@@ -39,86 +44,123 @@
         font: inherit;
       }
 
+      button {
+        -webkit-tap-highlight-color: transparent;
+      }
+
       .app-shell {
+        position: relative;
         width: min(100vw, 760px);
         min-height: 100dvh;
         margin: 0 auto;
-        padding: max(18px, env(safe-area-inset-top)) 16px max(22px, env(safe-area-inset-bottom));
+        padding: max(16px, env(safe-area-inset-top)) 14px calc(88px + env(safe-area-inset-bottom));
       }
 
-      .topbar,
+      .app-header,
+      .now-card,
+      .last-card,
       .section-heading,
-      .status-strip,
-      .last-block-strip,
-      .time-block,
-      .setup-list > div {
+      .timeline-row,
+      .metric-card,
+      .setting-row,
+      .sheet-head {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 14px;
+        gap: 10px;
       }
 
-      .topbar {
-        margin-bottom: 18px;
+      .app-header {
+        margin-bottom: 14px;
       }
 
-      .eyebrow,
+      .brand,
       .label,
-      .mini-heading,
       .block-time,
       .small-status {
         color: var(--muted);
-        font-size: 0.78rem;
-        font-weight: 700;
+        font-size: 0.72rem;
+        font-weight: 900;
         text-transform: uppercase;
       }
 
-      .eyebrow {
-        margin: 0 0 4px;
+      .brand {
+        letter-spacing: 0.03em;
       }
 
       h1,
-      h2 {
+      h2,
+      h3 {
         margin: 0;
-        line-height: 1.08;
+        line-height: 1.02;
       }
 
       h1 {
+        margin-top: 2px;
         font-size: 2rem;
       }
 
       h2 {
-        font-size: 1.1rem;
+        font-size: 1.14rem;
       }
 
-      .primary-button,
+      h3 {
+        font-size: 1rem;
+      }
+
+      .date-label {
+        color: var(--muted);
+        font-size: 0.8rem;
+        font-weight: 850;
+      }
+
+      .round-button,
+      .end-button,
       .secondary-button,
       .danger-button,
-      .tab {
-        min-height: 42px;
+      .nav-button,
+      .domain-button,
+      .primary-button {
         border: 1px solid var(--line);
         border-radius: 8px;
         background: var(--surface-strong);
         color: var(--ink);
         cursor: pointer;
-        font-weight: 800;
+        font-weight: 900;
+      }
+
+      .round-button {
+        width: 38px;
+        height: 38px;
+        border-radius: 999px;
+      }
+
+      .end-button {
+        min-width: 68px;
+        min-height: 42px;
+        border: 0;
+        background: var(--ink);
+        color: #fff;
       }
 
       .primary-button {
         width: 100%;
+        min-height: 46px;
         border-color: var(--accent);
         background: var(--accent);
-        color: var(--accent-ink);
+        color: #fff;
       }
 
       .secondary-button,
       .danger-button {
-        padding: 0 12px;
+        min-height: 36px;
+        padding: 0 11px;
+        font-size: 0.82rem;
       }
 
       .danger-button {
-        border-color: rgba(155, 61, 47, 0.35);
-        color: var(--warn);
+        border-color: rgba(155, 71, 65, 0.35);
+        color: var(--danger);
       }
 
       button:disabled {
@@ -126,60 +168,86 @@
         opacity: 0.45;
       }
 
-      .status-strip,
-      .last-block-strip,
-      .entry-form,
-      .metrics-grid > div,
-      .review-table-wrap,
-      .setup-list {
+      .now-card,
+      .last-card,
+      .timeline-card,
+      .review-card,
+      .settings-card,
+      .form-card,
+      .status-card {
         border: 1px solid var(--line);
         border-radius: 8px;
         background: var(--surface);
         box-shadow: var(--shadow);
       }
 
-      .status-strip,
-      .last-block-strip {
-        padding: 14px;
+      .now-card {
+        padding: 12px;
         margin-bottom: 12px;
       }
 
-      .status-strip strong,
-      .last-block-strip strong {
+      .now-card strong,
+      .last-card strong,
+      .setting-row strong {
         display: block;
         margin-top: 3px;
       }
 
-      .last-block-strip small {
-        display: block;
-        margin-top: 4px;
-        color: var(--muted);
-        font-weight: 700;
-      }
-
-      .last-actions {
-        display: flex;
-        gap: 8px;
-        flex-shrink: 0;
-      }
-
-      .tabs {
+      .domain-grid {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 6px;
-        margin-bottom: 14px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 9px;
       }
 
-      .tab {
+      .domain-button {
         min-width: 0;
-        padding: 0 6px;
-        color: var(--muted);
+        min-height: 68px;
+        font-size: 1.36rem;
+        background: var(--surface-strong);
       }
 
-      .tab.is-active {
-        border-color: var(--ink);
-        background: var(--ink);
+      .domain-button.active {
+        border-color: var(--accent);
+        background: var(--accent);
         color: #fff;
+      }
+
+      .domain-button.compact {
+        min-height: 42px;
+        font-size: 0.96rem;
+      }
+
+      .last-card {
+        margin-top: 12px;
+        padding: 11px;
+        background: var(--accent-soft);
+      }
+
+      .last-card.has-error {
+        background: var(--danger-soft);
+      }
+
+      .status-chip {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        margin-top: 6px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: #23564e;
+        padding: 0 8px;
+        font-size: 0.7rem;
+        font-weight: 900;
+      }
+
+      .status-chip.warn {
+        background: var(--amber-soft);
+        color: #704a1d;
+      }
+
+      .status-chip.bad {
+        background: var(--danger-soft);
+        color: var(--danger);
       }
 
       .panel {
@@ -191,75 +259,49 @@
       }
 
       .section-heading {
-        margin: 14px 0 12px;
+        margin: 18px 0 10px;
       }
 
-      .quick-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
-        margin-bottom: 12px;
+      .timeline-card,
+      .review-card,
+      .settings-card,
+      .form-card,
+      .status-card {
+        padding: 12px;
       }
 
-      .quick-grid .primary-button {
-        min-width: 0;
-        min-height: 72px;
-        background: var(--surface-strong);
-        color: var(--ink);
-        border-color: var(--line);
-      }
-
-      .quick-grid .primary-button.active {
-        background: var(--accent);
-        color: var(--accent-ink);
-        border-color: var(--accent);
-      }
-
-      .entry-form {
-        display: grid;
-        gap: 12px;
-        padding: 14px;
-        margin-bottom: 14px;
-      }
-
-      label {
-        display: grid;
-        gap: 6px;
-        color: var(--muted);
-        font-size: 0.84rem;
-        font-weight: 800;
-      }
-
-      input,
-      select {
-        width: 100%;
-        min-height: 44px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--surface-strong);
-        color: var(--ink);
-        padding: 0 11px;
-      }
-
-      .form-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
-      }
-
-      .block-list {
+      .timeline-list,
+      .review-list,
+      .settings-list,
+      .log-list {
         display: grid;
         gap: 8px;
-        margin-top: 8px;
+      }
+
+      .timeline-row {
+        align-items: stretch;
+      }
+
+      .timeline-row time {
+        width: 42px;
+        padding-top: 8px;
+        color: var(--muted);
+        font-size: 0.7rem;
+        font-weight: 900;
       }
 
       .time-block {
-        min-height: 64px;
-        border: 1px solid var(--line);
-        border-left: 5px solid var(--accent);
+        flex: 1;
+        min-height: 42px;
+        border-left: 4px solid var(--accent);
         border-radius: 8px;
-        background: var(--surface-strong);
-        padding: 10px;
+        background: var(--accent-soft);
+        padding: 8px;
+      }
+
+      .time-block.plan {
+        border-color: var(--blue);
+        background: var(--blue-soft);
       }
 
       .block-title,
@@ -267,65 +309,187 @@
         display: block;
       }
 
+      .block-title {
+        font-weight: 900;
+      }
+
+      .mini-capture-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+        margin-top: 12px;
+      }
+
       .metrics-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
-        margin-bottom: 12px;
+        gap: 8px;
+        margin-bottom: 10px;
       }
 
-      .metrics-grid > div {
-        padding: 13px;
+      .metric-card {
+        min-height: 66px;
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 10px;
       }
 
-      .metrics-grid strong {
-        display: block;
-        margin-top: 5px;
-        font-size: 1.45rem;
+      .metric-card strong {
+        font-size: 1.28rem;
       }
 
-      .review-table-wrap {
-        overflow: auto;
-      }
-
-      .review-table {
-        width: 100%;
-        border-collapse: collapse;
-        min-width: 420px;
-      }
-
-      .review-table th,
-      .review-table td {
-        border-bottom: 1px solid var(--line);
-        padding: 12px 10px;
-        text-align: left;
-      }
-
-      .setup-list {
+      .review-item {
         display: grid;
+        gap: 6px;
       }
 
-      .setup-list > div {
-        padding: 14px;
-        border-bottom: 1px solid var(--line);
+      .review-item-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 0.86rem;
+        font-weight: 900;
       }
 
-      .setup-list > div:last-child {
-        border-bottom: 0;
+      .bar {
+        height: 10px;
+        border-radius: 999px;
+        background: #ebe3d7;
+        overflow: hidden;
       }
 
-      .setup-actions {
+      .bar span {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: var(--accent);
+      }
+
+      .setting-row {
+        min-height: 48px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface-strong);
+        padding: 9px;
+      }
+
+      .form-card {
+        display: grid;
+        gap: 10px;
+        box-shadow: none;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 0.78rem;
+        font-weight: 900;
+      }
+
+      input,
+      select {
+        width: 100%;
+        min-height: 42px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface-strong);
+        color: var(--ink);
+        padding: 0 10px;
+        font-weight: 850;
+      }
+
+      .form-row {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 10px;
+        gap: 8px;
+      }
+
+      .empty-state {
+        display: grid;
+        place-items: center;
+        min-height: 170px;
+        border: 1px dashed #cfc3b4;
+        border-radius: 8px;
+        background: rgba(255, 253, 250, 0.6);
+        text-align: center;
+        padding: 18px;
+      }
+
+      .empty-state strong {
+        display: block;
+        margin-bottom: 8px;
+      }
+
+      .empty-state span {
+        color: var(--muted);
+        font-size: 0.84rem;
+        font-weight: 680;
+      }
+
+      .bottom-nav {
+        position: fixed;
+        left: max(14px, env(safe-area-inset-left));
+        right: max(14px, env(safe-area-inset-right));
+        bottom: max(12px, env(safe-area-inset-bottom));
+        z-index: 20;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 7px;
+        width: min(calc(100vw - 28px), 732px);
+        margin: 0 auto;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: rgba(255, 253, 250, 0.95);
+        padding: 6px;
+        box-shadow: 0 12px 30px rgba(35, 30, 20, 0.12);
+      }
+
+      .nav-button {
+        min-height: 40px;
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+
+      .nav-button.is-active {
+        background: var(--ink);
+        color: #fff;
+      }
+
+      .sheet-scrim {
+        position: fixed;
+        inset: 0;
+        z-index: 30;
+        background: rgba(30, 28, 22, 0.25);
+      }
+
+      .sheet {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 40;
+        width: min(100vw, 760px);
+        margin: 0 auto;
+        border-top: 1px solid var(--line);
+        border-radius: 20px 20px 0 0;
+        background: var(--surface);
+        box-shadow: 0 -18px 34px rgba(28, 25, 18, 0.16);
+        padding: 14px 14px max(14px, env(safe-area-inset-bottom));
+      }
+
+      [hidden] {
+        display: none !important;
       }
 
       @media (min-width: 680px) {
         .app-shell {
-          padding-top: 30px;
+          padding-top: 28px;
         }
 
-        .quick-grid {
+        .domain-grid {
           grid-template-columns: repeat(4, minmax(0, 1fr));
         }
       }
@@ -333,123 +497,134 @@
   </head>
   <body>
     <main class="app-shell">
-      <header class="topbar">
+      <header class="app-header">
         <div>
-          <p class="eyebrow">Apps Script</p>
-          <h1>TimeBlock Reality</h1>
+          <p class="brand" id="viewEyebrow">TimeBlock</p>
+          <h1 id="viewTitle">Reality</h1>
         </div>
+        <div class="date-label" id="todayLabel"></div>
       </header>
 
-      <section class="status-strip" aria-label="Current block">
-        <div>
-          <span class="label">Now</span>
-          <strong id="activeTitle">No active block</strong>
-        </div>
-        <button id="endBlockButton" class="secondary-button" disabled>End</button>
-      </section>
-
-      <nav class="tabs" aria-label="Primary">
-        <button class="tab is-active" data-tab="capture">Capture</button>
-        <button class="tab" data-tab="today">Today</button>
-        <button class="tab" data-tab="review">Review</button>
-        <button class="tab" data-tab="settings">Setup</button>
-      </nav>
-
       <section class="panel is-active" id="capturePanel">
-        <div class="section-heading">
-          <h2>LD8 Capture</h2>
-          <span id="todayLabel"></span>
-        </div>
-        <div class="quick-grid" id="quickGrid"></div>
-        <section class="last-block-strip" aria-label="Last actual block">
+        <section class="now-card" aria-label="Current block">
+          <div>
+            <span class="label">Now</span>
+            <strong id="activeTitle">No active block</strong>
+          </div>
+          <button id="endBlockButton" class="end-button" disabled>End</button>
+        </section>
+
+        <div class="domain-grid" id="quickGrid"></div>
+
+        <section class="last-card" id="lastBlockCard" aria-label="Last actual block">
           <div>
             <span class="label">Last</span>
             <strong id="lastBlockTitle">No actual yet</strong>
-            <small id="lastSyncStatus">Not synced</small>
+            <span class="status-chip warn" id="lastSyncStatus">Not synced</span>
           </div>
-          <div class="last-actions">
-            <button id="syncLastButton" class="secondary-button" type="button" disabled>Sync</button>
+          <div>
+            <button id="syncLastButton" class="secondary-button" type="button" disabled>Retry</button>
             <button id="fixLastButton" class="secondary-button" type="button" disabled>Fix</button>
           </div>
         </section>
-
-        <form class="entry-form" id="fixLastForm" hidden>
-          <label>
-            LD8
-            <select id="manualCategory"></select>
-          </label>
-          <div class="form-row">
-            <label>
-              Start
-              <input id="manualStart" type="time" required />
-            </label>
-            <label>
-              End
-              <input id="manualEnd" type="time" required />
-            </label>
-          </div>
-          <label>
-            Note
-            <input id="manualNote" type="text" placeholder="optional" />
-          </label>
-          <button class="primary-button" type="submit">Save fix</button>
-        </form>
       </section>
 
       <section class="panel" id="todayPanel">
         <div class="section-heading">
-          <h2>Today</h2>
+          <h2>Timeline</h2>
           <button id="syncPlanButton" class="secondary-button">Sync Plan</button>
         </div>
-        <div class="block-list" id="todayList"></div>
+        <section class="timeline-card">
+          <div class="timeline-list" id="todayList"></div>
+        </section>
+        <div class="mini-capture-grid" id="miniCaptureGrid"></div>
       </section>
 
-      <section class="panel" id="reviewPanel">
+      <section class="panel" id="morePanel">
         <div class="section-heading">
           <h2>Weekly Review</h2>
           <button id="syncReviewButton" class="secondary-button">Sync Plan</button>
         </div>
         <div class="metrics-grid" id="metricsGrid"></div>
-        <div class="review-table-wrap">
-          <table class="review-table">
-            <thead>
-              <tr>
-                <th>LD8</th>
-                <th>Plan</th>
-                <th>Actual</th>
-                <th>Delta</th>
-              </tr>
-            </thead>
-            <tbody id="reviewRows"></tbody>
-          </table>
-        </div>
-      </section>
+        <section class="review-card">
+          <div class="review-list" id="reviewRows"></div>
+        </section>
 
-      <section class="panel" id="settingsPanel">
         <div class="section-heading">
-          <h2>Setup</h2>
-          <button id="resetButton" class="danger-button">Reset local data</button>
+          <h2>Calendar</h2>
+          <button id="refreshStatusButton" class="secondary-button" type="button">Check</button>
         </div>
-        <div class="setup-list">
-          <div class="setup-actions">
-            <button id="refreshStatusButton" class="primary-button" type="button">Check GCal</button>
-            <button id="syncSetupPlanButton" class="secondary-button" type="button">Sync Plan</button>
+        <section class="settings-card">
+          <div class="settings-list">
+            <div class="setting-row">
+              <div>
+                <span class="label">Server</span>
+                <strong id="serverStatus">Loading...</strong>
+              </div>
+              <span class="status-chip" id="serverChip">Ready</span>
+            </div>
+            <div class="setting-row">
+              <div>
+                <span class="label">Plan source</span>
+                <strong id="planCalendarStatus">LD8 calendars</strong>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div>
+                <span class="label">Actual calendar</span>
+                <strong id="actualCalendarStatus">Actual-Time Log</strong>
+              </div>
+            </div>
+            <div class="setting-row">
+              <strong>Sync today</strong>
+              <button id="syncSetupPlanButton" class="secondary-button" type="button">Run</button>
+            </div>
+            <div class="setting-row">
+              <strong>Reset local cache</strong>
+              <button id="resetButton" class="danger-button" type="button">Reset</button>
+            </div>
           </div>
-          <div>
-            <span class="label">Server</span>
-            <strong id="serverStatus">Loading...</strong>
-          </div>
-          <div>
-            <span class="label">Plan source</span>
-            <strong id="planCalendarStatus">LD8 calendars</strong>
-          </div>
-          <div>
-            <span class="label">Actual calendar</span>
-            <strong id="actualCalendarStatus">Actual-Time Log</strong>
-          </div>
-        </div>
+        </section>
       </section>
     </main>
+
+    <nav class="bottom-nav" aria-label="Primary">
+      <button class="nav-button is-active" data-tab="capture">Capture</button>
+      <button class="nav-button" data-tab="today">Today</button>
+      <button class="nav-button" data-tab="more">More</button>
+    </nav>
+
+    <div class="sheet-scrim" id="fixSheetScrim" hidden></div>
+    <section class="sheet" id="fixSheet" aria-label="Fix last block" hidden>
+      <div class="sheet-head">
+        <div>
+          <span class="label">Fix last</span>
+          <strong id="fixSheetTitle">No actual yet</strong>
+        </div>
+        <button class="round-button" id="closeFixSheetButton" type="button" aria-label="Close fix sheet">x</button>
+      </div>
+      <form class="form-card" id="fixLastForm">
+        <label>
+          LD8
+          <select id="manualCategory"></select>
+        </label>
+        <div class="form-row">
+          <label>
+            Start
+            <input id="manualStart" type="time" required />
+          </label>
+          <label>
+            End
+            <input id="manualEnd" type="time" required />
+          </label>
+        </div>
+        <label>
+          Note
+          <input id="manualNote" type="text" placeholder="optional" />
+        </label>
+        <button class="primary-button" type="submit">Save fix</button>
+      </form>
+    </section>
 
     <script>
       const categories = [
@@ -466,12 +641,20 @@
       const storageKey = "timeblock-reality-apps-script-v1";
       const state = loadState();
       const els = {
+        viewEyebrow: document.querySelector("#viewEyebrow"),
+        viewTitle: document.querySelector("#viewTitle"),
         activeTitle: document.querySelector("#activeTitle"),
         endBlockButton: document.querySelector("#endBlockButton"),
         quickGrid: document.querySelector("#quickGrid"),
+        miniCaptureGrid: document.querySelector("#miniCaptureGrid"),
+        fixSheet: document.querySelector("#fixSheet"),
+        fixSheetScrim: document.querySelector("#fixSheetScrim"),
+        fixSheetTitle: document.querySelector("#fixSheetTitle"),
+        closeFixSheetButton: document.querySelector("#closeFixSheetButton"),
         fixLastForm: document.querySelector("#fixLastForm"),
         fixLastButton: document.querySelector("#fixLastButton"),
         syncLastButton: document.querySelector("#syncLastButton"),
+        lastBlockCard: document.querySelector("#lastBlockCard"),
         lastBlockTitle: document.querySelector("#lastBlockTitle"),
         lastSyncStatus: document.querySelector("#lastSyncStatus"),
         manualCategory: document.querySelector("#manualCategory"),
@@ -488,6 +671,7 @@
         resetButton: document.querySelector("#resetButton"),
         refreshStatusButton: document.querySelector("#refreshStatusButton"),
         serverStatus: document.querySelector("#serverStatus"),
+        serverChip: document.querySelector("#serverChip"),
         planCalendarStatus: document.querySelector("#planCalendarStatus"),
         actualCalendarStatus: document.querySelector("#actualCalendarStatus"),
       };
@@ -496,7 +680,8 @@
 
       function init() {
         fillSelect(els.manualCategory);
-        renderQuickButtons();
+        renderCaptureButtons(els.quickGrid);
+        renderCaptureButtons(els.miniCaptureGrid, true);
         setDefaultTimes();
         bindEvents();
         render();
@@ -504,12 +689,14 @@
       }
 
       function bindEvents() {
-        document.querySelectorAll(".tab").forEach((tab) => {
+        document.querySelectorAll(".nav-button").forEach((tab) => {
           tab.addEventListener("click", () => activateTab(tab.dataset.tab));
         });
         els.endBlockButton.addEventListener("click", () => endActiveBlock());
-        els.fixLastButton.addEventListener("click", toggleFixLastForm);
+        els.fixLastButton.addEventListener("click", openFixSheet);
         els.syncLastButton.addEventListener("click", retrySyncLastBlock);
+        els.closeFixSheetButton.addEventListener("click", closeFixSheet);
+        els.fixSheetScrim.addEventListener("click", closeFixSheet);
         els.fixLastForm.addEventListener("submit", fixLastBlock);
         els.syncPlanButton.addEventListener("click", syncPlan);
         els.syncReviewButton.addEventListener("click", syncPlan);
@@ -519,24 +706,31 @@
       }
 
       function activateTab(tabName) {
-        document.querySelectorAll(".tab").forEach((tab) => {
+        const titles = {
+          capture: ["TimeBlock", "Reality"],
+          today: ["Today", "Plan vs Actual"],
+          more: ["More", "Tools"],
+        };
+        document.querySelectorAll(".nav-button").forEach((tab) => {
           tab.classList.toggle("is-active", tab.dataset.tab === tabName);
         });
         document.querySelectorAll(".panel").forEach((panel) => {
           panel.classList.toggle("is-active", panel.id === `${tabName}Panel`);
         });
+        els.viewEyebrow.textContent = titles[tabName][0];
+        els.viewTitle.textContent = titles[tabName][1];
       }
 
-      function renderQuickButtons() {
-        els.quickGrid.innerHTML = "";
+      function renderCaptureButtons(container, compact = false) {
+        container.innerHTML = "";
         categories.forEach((category) => {
           const button = document.createElement("button");
-          button.className = "primary-button";
+          button.className = `domain-button${compact ? " compact" : ""}`;
           button.type = "button";
-          button.textContent = category.code;
+          button.textContent = compact ? category.code.replace(" ", "\n") : category.code;
           button.title = category.name;
           button.addEventListener("click", () => startQuickBlock(category.id));
-          els.quickGrid.append(button);
+          container.append(button);
         });
       }
 
@@ -570,6 +764,7 @@
         };
         saveState();
         render();
+        activateTab("capture");
       }
 
       async function endActiveBlock(shouldRender = true) {
@@ -602,7 +797,7 @@
           saveState();
           updateSyncStatus("Saved to GCal");
         } catch (error) {
-          updateSyncStatus(readableError(error));
+          updateSyncStatus(readableError(error), true);
         }
         render();
       }
@@ -616,7 +811,7 @@
           saveState();
           updateSyncStatus("Fixed in GCal");
         } catch (error) {
-          updateSyncStatus(readableError(error));
+          updateSyncStatus(readableError(error), true);
         }
         render();
       }
@@ -627,14 +822,21 @@
         await syncActualBlock(block);
       }
 
-      function toggleFixLastForm() {
+      function openFixSheet() {
         const block = getLastActualBlock();
         if (!block) return;
-        els.fixLastForm.hidden = !els.fixLastForm.hidden;
-        if (!els.fixLastForm.hidden) populateFixLastForm(block);
+        populateFixLastForm(block);
+        els.fixSheet.hidden = false;
+        els.fixSheetScrim.hidden = false;
+      }
+
+      function closeFixSheet() {
+        els.fixSheet.hidden = true;
+        els.fixSheetScrim.hidden = true;
       }
 
       function populateFixLastForm(block) {
+        els.fixSheetTitle.textContent = `${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)}`;
         els.manualCategory.value = block.categoryId;
         els.manualStart.value = toTimeInput(new Date(block.start));
         els.manualEnd.value = toTimeInput(new Date(block.end));
@@ -651,13 +853,15 @@
         block.start = fixed.start;
         block.end = fixed.end;
         saveState();
+        closeFixSheet();
         await updateActualBlock(block);
-        els.fixLastForm.hidden = true;
         render();
       }
 
       async function syncPlan() {
         els.serverStatus.textContent = "Syncing plan...";
+        els.serverChip.textContent = "Syncing";
+        els.serverChip.className = "status-chip warn";
         try {
           const result = await runServer("syncPlanWeek");
           state.plan = result.blocks || [];
@@ -665,19 +869,29 @@
           saveState();
           render();
           els.serverStatus.textContent = `Synced ${state.plan.length} plan`;
+          els.serverChip.textContent = "Ready";
+          els.serverChip.className = "status-chip";
         } catch (error) {
           els.serverStatus.textContent = readableError(error);
+          els.serverChip.textContent = "Issue";
+          els.serverChip.className = "status-chip bad";
         }
       }
 
       async function refreshStatus() {
         els.serverStatus.textContent = "Checking...";
+        els.serverChip.textContent = "Checking";
+        els.serverChip.className = "status-chip warn";
         try {
           const result = await runServer("getBootstrapState");
           applyCalendarStatus(result.calendars);
           els.serverStatus.textContent = "Ready";
+          els.serverChip.textContent = "Ready";
+          els.serverChip.className = "status-chip";
         } catch (error) {
           els.serverStatus.textContent = readableError(error);
+          els.serverChip.textContent = "Issue";
+          els.serverChip.className = "status-chip bad";
         }
       }
 
@@ -707,28 +921,34 @@
           els.activeTitle.textContent = "No active block";
           els.endBlockButton.disabled = true;
         } else {
-          els.activeTitle.textContent = `${categoryLabel(state.active.categoryId)} since ${formatTime(state.active.start)}`;
+          els.activeTitle.textContent = `${categoryShortLabel(state.active.categoryId)} ${formatTime(state.active.start)}`;
           els.endBlockButton.disabled = false;
         }
-        document.querySelectorAll(".quick-grid button").forEach((button, index) => {
-          button.classList.toggle("active", state.active?.categoryId === categories[index].id);
+        [...els.quickGrid.querySelectorAll("button"), ...els.miniCaptureGrid.querySelectorAll("button")].forEach((button) => {
+          const category = categories.find((item) => button.title === item.name);
+          button.classList.toggle("active", state.active?.categoryId === category?.id);
         });
       }
 
       function renderLastBlock() {
         const block = getLastActualBlock();
+        els.lastBlockCard.classList.remove("has-error");
         if (!block) {
           els.lastBlockTitle.textContent = "No actual yet";
           els.lastSyncStatus.textContent = "Not synced";
+          els.lastSyncStatus.className = "status-chip warn";
           els.fixLastButton.disabled = true;
           els.syncLastButton.disabled = true;
-          els.fixLastForm.hidden = true;
+          closeFixSheet();
           return;
         }
         els.lastBlockTitle.textContent = `${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)}`;
-        els.lastSyncStatus.textContent = block.googleEventId ? "Saved to GCal" : "Not synced";
+        const isSynced = Boolean(block.googleEventId);
+        els.lastSyncStatus.textContent = isSynced ? "Saved to GCal" : "Not saved";
+        els.lastSyncStatus.className = `status-chip ${isSynced ? "" : "bad"}`;
+        els.lastBlockCard.classList.toggle("has-error", !isSynced);
         els.fixLastButton.disabled = false;
-        els.syncLastButton.disabled = Boolean(block.googleEventId);
+        els.syncLastButton.disabled = isSynced;
       }
 
       function renderToday() {
@@ -737,18 +957,19 @@
           .sort((a, b) => new Date(a.start) - new Date(b.start));
         els.todayList.innerHTML = "";
         if (!items.length) {
-          const empty = document.createElement("p");
-          empty.className = "block-time";
-          empty.textContent = "No blocks";
+          const empty = document.createElement("div");
+          empty.className = "empty-state";
+          empty.innerHTML = "<div><strong>No blocks today</strong><span>Capture from the main page or sync your LD8 plan.</span></div>";
           els.todayList.append(empty);
           return;
         }
         items.forEach((block) => {
-          const node = document.createElement("article");
-          node.className = "time-block";
+          const row = document.createElement("article");
+          row.className = "timeline-row";
           const type = block.source === "gcal-plan" ? "Plan" : "Actual";
-          node.innerHTML = `<div><strong class="block-title">${type}: ${categoryLabel(block.categoryId)}</strong><span class="block-time">${formatTime(block.start)}-${formatTime(block.end)} · ${minutesBetween(block.start, block.end)}m</span></div>`;
-          els.todayList.append(node);
+          const blockClass = type === "Plan" ? "time-block plan" : "time-block";
+          row.innerHTML = `<time>${formatTime(block.start)}</time><div class="${blockClass}"><strong class="block-title">${type}: ${categoryShortLabel(block.categoryId)}</strong><span class="block-time">${formatTime(block.start)}-${formatTime(block.end)} · ${minutesBetween(block.start, block.end)}m</span></div>`;
+          els.todayList.append(row);
         });
       }
 
@@ -762,21 +983,33 @@
         [
           ["Plan", formatHours(planMinutes)],
           ["Actual", formatHours(actualMinutes)],
-          ["Adherence", `${adherence}%`],
+          ["Match", `${adherence}%`],
           ["Last", getLastActualBlock() ? categoryShortLabel(getLastActualBlock().categoryId) : "-"],
         ].forEach(([label, value]) => {
           const card = document.createElement("div");
+          card.className = "metric-card";
           card.innerHTML = `<span class="label">${label}</span><strong>${value}</strong>`;
           els.metricsGrid.append(card);
         });
         els.reviewRows.innerHTML = "";
-        categories.forEach((category) => {
-          const planned = totalMinutes(state.plan.filter((block) => block.categoryId === category.id), start, end);
-          const actual = totalMinutes(state.actual.filter((block) => block.categoryId === category.id), start, end);
-          if (!planned && !actual) return;
-          const row = document.createElement("tr");
-          row.innerHTML = `<td>${categoryLabel(category.id)}</td><td>${formatHours(planned)}</td><td>${formatHours(actual)}</td><td>${formatSignedHours(actual - planned)}</td>`;
-          els.reviewRows.append(row);
+        const rows = categories
+          .map((category) => {
+            const planned = totalMinutes(state.plan.filter((block) => block.categoryId === category.id), start, end);
+            const actual = totalMinutes(state.actual.filter((block) => block.categoryId === category.id), start, end);
+            return { category, planned, actual };
+          })
+          .filter((row) => row.planned || row.actual);
+        if (!rows.length) {
+          els.reviewRows.innerHTML = '<div class="empty-state"><div><strong>No weekly data</strong><span>Capture actual blocks or sync your LD8 plan.</span></div></div>';
+          return;
+        }
+        rows.forEach(({ category, planned, actual }) => {
+          const item = document.createElement("div");
+          item.className = "review-item";
+          const max = Math.max(planned, actual, 1);
+          const width = Math.max(6, Math.round((actual / max) * 100));
+          item.innerHTML = `<div class="review-item-header"><span>${category.code}</span><span>${formatHours(planned)} / ${formatHours(actual)} · ${formatSignedHours(actual - planned)}</span></div><div class="bar"><span style="width: ${width}%"></span></div>`;
+          els.reviewRows.append(item);
         });
       }
 
@@ -787,9 +1020,12 @@
         els.actualCalendarStatus.textContent = calendars.actualFound ? `${calendars.actualName} found` : "Actual-Time Log missing";
       }
 
-      function updateSyncStatus(status) {
+      function updateSyncStatus(status, isError = false) {
         els.lastSyncStatus.textContent = status;
+        els.lastSyncStatus.className = `status-chip ${isError ? "bad" : "warn"}`;
         els.serverStatus.textContent = status;
+        els.serverChip.textContent = isError ? "Issue" : "Ready";
+        els.serverChip.className = `status-chip ${isError ? "bad" : ""}`;
       }
 
       function resetLocalData() {
@@ -800,6 +1036,7 @@
         state.active = null;
         saveState();
         render();
+        activateTab("capture");
       }
 
       function runServer(functionName, ...args) {
@@ -832,11 +1069,6 @@
 
       function saveState() {
         localStorage.setItem(storageKey, JSON.stringify(state));
-      }
-
-      function categoryLabel(id) {
-        const category = categories.find((item) => item.id === id);
-        return category ? `${category.code} - ${category.name}` : id;
       }
 
       function categoryShortLabel(id) {
