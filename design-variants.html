@@ -1,0 +1,683 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TimeBlock Reality UI Variants</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --page: #f4f0e8;
+        --paper: #fffdfa;
+        --ink: #1f1f1b;
+        --muted: #706b61;
+        --line: #ddd4c6;
+        --green: #177365;
+        --blue: #315f8c;
+        --amber: #b4752b;
+        --rose: #9f4d4d;
+        --soft-green: #e7f1ec;
+        --soft-blue: #e9f0f7;
+        --soft-amber: #f4eadb;
+        --shadow: 0 18px 50px rgba(32, 28, 20, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--page);
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      .board {
+        width: min(1480px, calc(100vw - 40px));
+        margin: 0 auto;
+        padding: 32px 0 48px;
+      }
+
+      .board-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        align-items: end;
+        margin-bottom: 24px;
+      }
+
+      .board-header h1 {
+        margin: 0;
+        font-size: clamp(28px, 3vw, 44px);
+        line-height: 1;
+      }
+
+      .board-header p {
+        max-width: 640px;
+        margin: 10px 0 0;
+        color: var(--muted);
+        font-weight: 650;
+      }
+
+      .rules {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
+      .pill {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 253, 250, 0.72);
+        padding: 8px 12px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .variants {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .variant {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--paper);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .variant-head {
+        padding: 18px 18px 14px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .variant-head h2 {
+        margin: 0;
+        font-size: 22px;
+      }
+
+      .variant-head p {
+        min-height: 42px;
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.4;
+        font-weight: 650;
+      }
+
+      .screens {
+        display: grid;
+        grid-template-columns: 208px 1fr;
+        gap: 14px;
+        padding: 16px;
+        align-items: start;
+      }
+
+      .phone {
+        width: 208px;
+        height: 450px;
+        border: 8px solid #191814;
+        border-radius: 34px;
+        overflow: hidden;
+        background: #fffaf4;
+        box-shadow: 0 14px 34px rgba(22, 20, 15, 0.18);
+      }
+
+      .desktop {
+        min-height: 300px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fbf9f4;
+        overflow: hidden;
+      }
+
+      .screen {
+        min-height: 100%;
+        padding: 14px;
+      }
+
+      .mini-top,
+      .row,
+      .now,
+      .bar,
+      .metric-row,
+      .log-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .mini-brand {
+        font-size: 12px;
+        color: var(--muted);
+        font-weight: 850;
+        text-transform: uppercase;
+      }
+
+      .title {
+        margin: 2px 0 0;
+        font-size: 23px;
+        line-height: 1;
+      }
+
+      .small {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .now {
+        margin: 14px 0 12px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .now strong {
+        display: block;
+        margin-top: 2px;
+        font-size: 15px;
+      }
+
+      .end {
+        border: 0;
+        border-radius: 8px;
+        background: var(--ink);
+        color: #fff;
+        padding: 10px 12px;
+        font-weight: 900;
+      }
+
+      .grid8 {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .domain {
+        min-height: 58px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        color: var(--ink);
+        font-size: 20px;
+        font-weight: 950;
+      }
+
+      .domain.active {
+        border-color: var(--green);
+        background: var(--green);
+        color: #fff;
+      }
+
+      .last {
+        margin-top: 10px;
+        padding: 10px;
+        border-radius: 8px;
+        background: var(--soft-green);
+        font-size: 12px;
+        font-weight: 850;
+        color: #254b43;
+      }
+
+      .bottom-nav {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+        margin-top: 12px;
+      }
+
+      .nav-btn {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 8px 4px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .nav-btn.on {
+        background: var(--ink);
+        color: #fff;
+      }
+
+      .desktop .screen {
+        padding: 16px;
+      }
+
+      .desktop-grid {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 12px;
+        margin-top: 14px;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 12px;
+      }
+
+      .panel h3 {
+        margin: 0 0 10px;
+        font-size: 14px;
+      }
+
+      .compact-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 7px;
+      }
+
+      .compact-grid .domain {
+        min-height: 44px;
+        font-size: 15px;
+      }
+
+      .timeline {
+        display: grid;
+        gap: 7px;
+      }
+
+      .slot {
+        display: grid;
+        grid-template-columns: 38px 1fr;
+        gap: 8px;
+        align-items: stretch;
+      }
+
+      .slot time {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .block {
+        min-height: 40px;
+        border-left: 4px solid var(--blue);
+        border-radius: 8px;
+        background: var(--soft-blue);
+        padding: 8px;
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .block.actual {
+        border-color: var(--green);
+        background: var(--soft-green);
+      }
+
+      .capture-dock {
+        margin-top: 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 10px;
+      }
+
+      .dock-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      .dock-row button {
+        min-height: 38px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        font-weight: 950;
+      }
+
+      .command {
+        margin: 12px 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 8px;
+      }
+
+      .command input {
+        width: 100%;
+        border: 0;
+        outline: 0;
+        font-weight: 850;
+        color: var(--ink);
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .chip {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #fff;
+        padding: 7px 9px;
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .chip.hot {
+        border-color: var(--amber);
+        background: var(--soft-amber);
+        color: #6c451c;
+      }
+
+      .log {
+        display: grid;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .log-item {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 9px;
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .delta {
+        color: var(--rose);
+      }
+
+      .recommendation {
+        margin: 16px;
+        border-top: 1px solid var(--line);
+        padding-top: 14px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.45;
+        font-weight: 680;
+      }
+
+      .recommendation strong {
+        color: var(--ink);
+      }
+
+      @media (max-width: 1180px) {
+        .variants {
+          grid-template-columns: 1fr;
+        }
+
+        .screens {
+          grid-template-columns: 208px minmax(0, 1fr);
+        }
+      }
+
+      @media (max-width: 760px) {
+        .board {
+          width: min(100vw - 24px, 460px);
+          padding-top: 22px;
+        }
+
+        .board-header {
+          display: block;
+        }
+
+        .rules {
+          justify-content: flex-start;
+          margin-top: 14px;
+        }
+
+        .screens {
+          grid-template-columns: 1fr;
+        }
+
+        .phone {
+          width: 100%;
+          max-width: 260px;
+          margin: 0 auto;
+        }
+
+        .desktop {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="board">
+      <header class="board-header">
+        <div>
+          <h1>TimeBlock Reality UI Variants</h1>
+          <p>เป้าหมายใหม่คือกดเร็วระหว่างวัน, เห็นสถานะชัด, และซ่อนงานแก้ไข/วิเคราะห์ไว้หลังจอหลัก ไม่ให้ capture กลายเป็นงาน admin</p>
+        </div>
+        <div class="rules">
+          <span class="pill">iPhone first</span>
+          <span class="pill">LD8 only</span>
+          <span class="pill">No Connect GCal</span>
+          <span class="pill">Fix is secondary</span>
+        </div>
+      </header>
+
+      <section class="variants" aria-label="Design variants">
+        <article class="variant">
+          <div class="variant-head">
+            <h2>1. One Thumb Capture</h2>
+            <p>เหมาะสุดสำหรับการใช้งานจริงระหว่างวัน: เปิดมาแล้วกด LD8 ได้ทันที ไม่มี tab บนสุด ไม่มีฟอร์มเด่น</p>
+          </div>
+          <div class="screens">
+            <div class="phone">
+              <div class="screen">
+                <div class="mini-top">
+                  <div>
+                    <div class="mini-brand">TimeBlock</div>
+                    <h3 class="title">Reality</h3>
+                  </div>
+                  <div class="small">Thu 2 Jul</div>
+                </div>
+                <div class="now">
+                  <div>
+                    <div class="small">Now</div>
+                    <strong>5 CM 16:40</strong>
+                  </div>
+                  <button class="end">End</button>
+                </div>
+                <div class="grid8">
+                  <button class="domain">1 BD</button>
+                  <button class="domain">2 SP</button>
+                  <button class="domain">3 MM</button>
+                  <button class="domain">4 RS</button>
+                  <button class="domain active">5 CM</button>
+                  <button class="domain">6 FN</button>
+                  <button class="domain">7 CT</button>
+                  <button class="domain">8 LS</button>
+                </div>
+                <div class="last">Last saved: 1 BD 16:55-17:00</div>
+                <div class="bottom-nav">
+                  <button class="nav-btn on">Capture</button>
+                  <button class="nav-btn">Today</button>
+                  <button class="nav-btn">More</button>
+                </div>
+              </div>
+            </div>
+            <div class="desktop">
+              <div class="screen">
+                <div class="mini-top">
+                  <div>
+                    <div class="mini-brand">TimeBlock Reality</div>
+                    <h3 class="title">Capture</h3>
+                  </div>
+                  <button class="end">End current</button>
+                </div>
+                <div class="desktop-grid">
+                  <div class="panel">
+                    <h3>LD8 Capture</h3>
+                    <div class="compact-grid">
+                      <button class="domain">1 BD</button>
+                      <button class="domain">2 SP</button>
+                      <button class="domain">3 MM</button>
+                      <button class="domain">4 RS</button>
+                      <button class="domain active">5 CM</button>
+                      <button class="domain">6 FN</button>
+                      <button class="domain">7 CT</button>
+                      <button class="domain">8 LS</button>
+                    </div>
+                  </div>
+                  <div class="panel">
+                    <h3>Status</h3>
+                    <div class="metric-row"><span>Now</span><strong>5 CM 16:40</strong></div>
+                    <div class="metric-row"><span>Last</span><strong>Saved to GCal</strong></div>
+                    <div class="metric-row"><span>Fix</span><strong>Only when needed</strong></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="recommendation"><strong>Tradeoff:</strong> เร็วที่สุดและง่ายที่สุด แต่ Today/Review ต้องอยู่หลังปุ่มรอง เหมาะถ้า priority คือ capture ให้ติดนิสัยก่อน</p>
+        </article>
+
+        <article class="variant">
+          <div class="variant-head">
+            <h2>2. Timeline First</h2>
+            <p>เปิดมาเห็นวันนี้ทันทีว่าแผนกับชีวิตจริงห่างกันตรงไหน แล้วมี capture dock สั้น ๆ อยู่ล่างจอ</p>
+          </div>
+          <div class="screens">
+            <div class="phone">
+              <div class="screen">
+                <div class="mini-top">
+                  <div>
+                    <div class="mini-brand">Today</div>
+                    <h3 class="title">Plan vs Actual</h3>
+                  </div>
+                  <div class="small delta">-42m</div>
+                </div>
+                <div class="timeline">
+                  <div class="slot"><time>09:00</time><div class="block">Plan: 1 BD</div></div>
+                  <div class="slot"><time>10:30</time><div class="block actual">Actual: 5 CM</div></div>
+                  <div class="slot"><time>13:00</time><div class="block">Plan: 3 MM</div></div>
+                  <div class="slot"><time>15:30</time><div class="block actual">Actual: 1 BD</div></div>
+                </div>
+                <div class="capture-dock">
+                  <div class="row"><strong>Quick capture</strong><button class="end">End</button></div>
+                  <div class="dock-row">
+                    <button>1</button><button>2</button><button>3</button><button>4</button>
+                    <button>5</button><button>6</button><button>7</button><button>8</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="desktop">
+              <div class="screen">
+                <div class="mini-top">
+                  <div>
+                    <div class="mini-brand">TimeBlock Reality</div>
+                    <h3 class="title">Today</h3>
+                  </div>
+                  <div class="chips"><span class="chip hot">Plan drift -42m</span><span class="chip">7 blocks</span></div>
+                </div>
+                <div class="desktop-grid">
+                  <div class="panel">
+                    <h3>Timeline</h3>
+                    <div class="timeline">
+                      <div class="slot"><time>09:00</time><div class="block">Plan: 1 BD Deep body reset</div></div>
+                      <div class="slot"><time>10:30</time><div class="block actual">Actual: 5 CM admin work</div></div>
+                      <div class="slot"><time>13:00</time><div class="block">Plan: 3 MM writing</div></div>
+                    </div>
+                  </div>
+                  <div class="panel">
+                    <h3>Capture Dock</h3>
+                    <div class="compact-grid">
+                      <button class="domain">1</button><button class="domain">2</button><button class="domain">3</button><button class="domain">4</button>
+                      <button class="domain active">5</button><button class="domain">6</button><button class="domain">7</button><button class="domain">8</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="recommendation"><strong>Tradeoff:</strong> เห็น insight เร็วกว่า แต่ capture ไม่เด่นที่สุด เหมาะถ้าคุณเปิด app เพื่อปรับวันบ่อย ๆ ไม่ใช่แค่กดบันทึก</p>
+        </article>
+
+        <article class="variant">
+          <div class="variant-head">
+            <h2>3. Command Log</h2>
+            <p>เหมาะกับคนที่อยากเห็นหลักฐานล่าสุดก่อน: ด้านบนเป็นคำสั่งเร็ว, กลางจอเป็น log, fix อยู่ข้างแต่ละรายการ</p>
+          </div>
+          <div class="screens">
+            <div class="phone">
+              <div class="screen">
+                <div class="mini-top">
+                  <div>
+                    <div class="mini-brand">Actual Log</div>
+                    <h3 class="title">Today</h3>
+                  </div>
+                  <button class="end">End</button>
+                </div>
+                <div class="command">
+                  <input value="Start 5 CM now" aria-label="Command" />
+                </div>
+                <div class="chips">
+                  <span class="chip">1 BD</span>
+                  <span class="chip">2 SP</span>
+                  <span class="chip">3 MM</span>
+                  <span class="chip hot">5 CM</span>
+                </div>
+                <div class="log">
+                  <div class="log-item"><span>16:55-17:00</span><strong>1 BD</strong></div>
+                  <div class="log-item"><span>15:31-15:36</span><strong>1 BD</strong></div>
+                  <div class="log-item"><span>14:51-14:57</span><strong>5 CM</strong></div>
+                  <div class="log-item"><span>13:05-14:20</span><strong>3 MM</strong></div>
+                </div>
+              </div>
+            </div>
+            <div class="desktop">
+              <div class="screen">
+                <div class="mini-top">
+                  <div>
+                    <div class="mini-brand">TimeBlock Reality</div>
+                    <h3 class="title">Command Log</h3>
+                  </div>
+                  <button class="end">Save fix</button>
+                </div>
+                <div class="command"><input value="Type or tap: 1 BD, 2 SP, 5 CM..." /></div>
+                <div class="desktop-grid">
+                  <div class="panel">
+                    <h3>Actual Log</h3>
+                    <div class="log">
+                      <div class="log-item"><span>16:55-17:00</span><strong>1 BD saved</strong></div>
+                      <div class="log-item"><span>15:31-15:36</span><strong>1 BD saved</strong></div>
+                      <div class="log-item"><span>14:51-14:57</span><strong>5 CM saved</strong></div>
+                    </div>
+                  </div>
+                  <div class="panel">
+                    <h3>Fast Actions</h3>
+                    <div class="chips">
+                      <span class="chip hot">Start 5 CM</span>
+                      <span class="chip">Fix last</span>
+                      <span class="chip">Sync today</span>
+                      <span class="chip">Review</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="recommendation"><strong>Tradeoff:</strong> ตรวจย้อนหลังและแก้ง่ายที่สุด แต่ดูเป็นเครื่องมือมากกว่า habit app เหมาะถ้าคุณกังวลเรื่องข้อมูลหาย/บันทึกผิดบ่อย</p>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
