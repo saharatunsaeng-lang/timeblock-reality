@@ -19,6 +19,30 @@ Mobile-first companion for a two-calendar time blocking workflow:
 
 The first version is local-device first. It stores blocks in browser storage, creates Google Calendar event links for actual blocks, and exports a weekly Markdown review for secondbrain notes.
 
+## Google Calendar integration
+
+OAuth client:
+
+- `809951458535-dg6gjp5nk4fjrgs1kngrger4cni90er9.apps.googleusercontent.com`
+
+Required Google Calendar names:
+
+- `Plan - Week`
+- `Actual - Time Log`
+
+Expected Google Cloud setup:
+
+- Google Calendar API enabled.
+- OAuth web client authorized JavaScript origin: `https://saharatunsaeng-lang.github.io`.
+- Optional local dev origin: `http://localhost:4173`.
+
+Runtime behavior:
+
+- `Connect GCal` requests access in the browser.
+- `Sync Plan` imports the current week from `Plan - Week`.
+- New actual blocks are written to `Actual - Time Log` when connected.
+- Access tokens stay in browser memory; calendar IDs are stored locally.
+
 ## Current scope
 
 - Quick actual capture.
@@ -27,6 +51,9 @@ The first version is local-device first. It stores blocks in browser storage, cr
 - Weekly category delta.
 - Markdown export.
 - GitHub Pages deployment.
+- Google Calendar OAuth connect.
+- Plan calendar sync.
+- Actual event write.
 
 ## Next phase
 

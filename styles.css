@@ -358,6 +358,17 @@ textarea {
   border-bottom: 0;
 }
 
+.setup-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.setup-actions .primary-button,
+.setup-actions .secondary-button {
+  min-width: 0;
+}
+
 @media (min-width: 680px) {
   .app-shell {
     padding-top: 30px;
