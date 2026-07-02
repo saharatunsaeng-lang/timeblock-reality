@@ -1,4 +1,4 @@
-const cacheName = "timeblock-reality-v1";
+const cacheName = "timeblock-reality-v2";
 const assets = ["./", "index.html", "styles.css", "app.js", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (event) => {

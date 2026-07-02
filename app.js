@@ -1,15 +1,15 @@
 const categories = [
-  { id: "deep-work", label: "Deep Work" },
-  { id: "admin", label: "Admin" },
-  { id: "meeting", label: "Meeting" },
-  { id: "ops", label: "Ops" },
-  { id: "health", label: "Health" },
-  { id: "family", label: "Family" },
-  { id: "noise", label: "Noise" },
-  { id: "recovery", label: "Recovery" },
+  { id: "bd", label: "BD - Body & Diet" },
+  { id: "sp", label: "SP - Spiritual & Purpose" },
+  { id: "mm", label: "MM - Mind & Memory" },
+  { id: "rs", label: "RS - Relationships & Social" },
+  { id: "cm", label: "CM - Career & Money" },
+  { id: "fn", label: "FN - Finance & Numbers" },
+  { id: "ct", label: "CT - Contribute" },
+  { id: "ls", label: "LS - Lifestyle" },
 ];
 
-const storageKey = "timeblock-reality-v1";
+const storageKey = "timeblock-reality-v2";
 const state = loadState();
 let deferredInstallPrompt = null;
 
@@ -234,17 +234,17 @@ function renderReview() {
   const end = addDays(start, 7);
   const planMinutes = totalMinutes(state.plan, start, end);
   const actualMinutes = totalMinutes(state.actual, start, end);
-  const noiseMinutes = totalMinutes(state.actual.filter((block) => block.categoryId === "noise"), start, end);
-  const recoveryMinutes = totalMinutes(state.actual.filter((block) => block.categoryId === "recovery"), start, end);
   const adherence = planMinutes ? Math.round((Math.min(planMinutes, actualMinutes) / planMinutes) * 100) : 0;
+  const topActual = topCategoryMinutes(state.actual, start, end);
+  const largestDrift = largestCategoryDrift(start, end);
 
   els.metricsGrid.innerHTML = "";
   [
     ["Plan", formatHours(planMinutes)],
     ["Actual", formatHours(actualMinutes)],
     ["Adherence", `${adherence}%`],
-    ["Noise", formatHours(noiseMinutes)],
-    ["Recovery", formatHours(recoveryMinutes)],
+    ["Top Actual", topActual ? `${categoryShortLabel(topActual.categoryId)} ${formatHours(topActual.minutes)}` : "0h"],
+    ["Largest Drift", largestDrift ? `${categoryShortLabel(largestDrift.categoryId)} ${formatSignedHours(largestDrift.delta)}` : "0h"],
   ].forEach(([label, value]) => {
     const card = document.createElement("div");
     card.innerHTML = `<span class="label">${label}</span><strong>${value}</strong>`;
@@ -282,7 +282,6 @@ function exportMarkdown() {
     "## Summary",
     `- Plan: ${formatHours(totalMinutes(state.plan, start, end))}`,
     `- Actual: ${formatHours(totalMinutes(state.actual, start, end))}`,
-    `- Noise: ${formatHours(totalMinutes(state.actual.filter((block) => block.categoryId === "noise"), start, end))}`,
     "",
     "## Category Delta",
     "| Category | Plan | Actual | Delta |",
@@ -348,6 +347,27 @@ function saveState() {
 
 function categoryLabel(id) {
   return categories.find((category) => category.id === id)?.label || id;
+}
+
+function categoryShortLabel(id) {
+  return categoryLabel(id).split(" - ")[0];
+}
+
+function topCategoryMinutes(blocks, start, end) {
+  const totals = categories.map((category) => ({
+    categoryId: category.id,
+    minutes: totalMinutes(blocks.filter((block) => block.categoryId === category.id), start, end),
+  }));
+  return totals.sort((a, b) => b.minutes - a.minutes).find((item) => item.minutes > 0);
+}
+
+function largestCategoryDrift(start, end) {
+  const deltas = categories.map((category) => {
+    const planned = totalMinutes(state.plan.filter((block) => block.categoryId === category.id), start, end);
+    const actual = totalMinutes(state.actual.filter((block) => block.categoryId === category.id), start, end);
+    return { categoryId: category.id, delta: actual - planned };
+  });
+  return deltas.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)).find((item) => item.delta !== 0);
 }
 
 function todayDateKey() {
