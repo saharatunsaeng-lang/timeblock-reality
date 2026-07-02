@@ -27,11 +27,14 @@ const els = {
   activeTitle: document.querySelector("#activeTitle"),
   endBlockButton: document.querySelector("#endBlockButton"),
   quickGrid: document.querySelector("#quickGrid"),
-  manualForm: document.querySelector("#manualForm"),
+  manualForm: document.querySelector("#fixLastForm"),
   manualCategory: document.querySelector("#manualCategory"),
   manualStart: document.querySelector("#manualStart"),
   manualEnd: document.querySelector("#manualEnd"),
   manualNote: document.querySelector("#manualNote"),
+  fixLastForm: document.querySelector("#fixLastForm"),
+  fixLastButton: document.querySelector("#fixLastButton"),
+  lastBlockTitle: document.querySelector("#lastBlockTitle"),
   planForm: document.querySelector("#planForm"),
   planCategory: document.querySelector("#planCategory"),
   planStart: document.querySelector("#planStart"),
@@ -76,7 +79,8 @@ function bindEvents() {
   });
 
   els.endBlockButton.addEventListener("click", () => endActiveBlock());
-  els.manualForm.addEventListener("submit", addManualActual);
+  els.manualForm.addEventListener("submit", fixLastBlock);
+  els.fixLastButton.addEventListener("click", toggleFixLastForm);
   els.planForm.addEventListener("submit", addPlanBlock);
   els.addPlanButton.addEventListener("click", () => {
     els.planForm.hidden = !els.planForm.hidden;
@@ -206,6 +210,7 @@ function buildBlockFromForm(prefix, categoryId, startTime, endTime, note) {
 
 function render() {
   renderActive();
+  renderLastBlock();
   renderBlocks("plan", els.planList);
   renderBlocks("actual", els.actualList);
   renderReview();
@@ -223,6 +228,19 @@ function renderActive() {
   document.querySelectorAll(".quick-grid button").forEach((button, index) => {
     button.classList.toggle("active", state.active?.categoryId === categories[index].id);
   });
+}
+
+function renderLastBlock() {
+  const block = getLastActualBlock();
+  if (!block) {
+    els.lastBlockTitle.textContent = "No actual yet";
+    els.fixLastButton.disabled = true;
+    els.fixLastForm.hidden = true;
+    return;
+  }
+
+  els.lastBlockTitle.textContent = `${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)}`;
+  els.fixLastButton.disabled = false;
 }
 
 function renderBlocks(type, container) {
@@ -292,6 +310,37 @@ function renderReview() {
 function deleteBlock(type, id) {
   state[type] = state[type].filter((block) => block.id !== id);
   saveState();
+  render();
+}
+
+function toggleFixLastForm() {
+  const block = getLastActualBlock();
+  if (!block) return;
+  els.fixLastForm.hidden = !els.fixLastForm.hidden;
+  if (!els.fixLastForm.hidden) {
+    populateFixLastForm(block);
+  }
+}
+
+function populateFixLastForm(block) {
+  els.manualCategory.value = block.categoryId;
+  els.manualStart.value = toTimeInput(new Date(block.start));
+  els.manualEnd.value = toTimeInput(new Date(block.end));
+  els.manualNote.value = block.note || "";
+}
+
+async function fixLastBlock(event) {
+  event.preventDefault();
+  const block = getLastActualBlock();
+  if (!block) return;
+  const fixed = buildBlockFromForm("actual", els.manualCategory.value, els.manualStart.value, els.manualEnd.value, els.manualNote.value);
+  block.categoryId = fixed.categoryId;
+  block.note = fixed.note;
+  block.start = fixed.start;
+  block.end = fixed.end;
+  saveState();
+  await updateActualBlock(block);
+  els.fixLastForm.hidden = true;
   render();
 }
 
@@ -487,18 +536,7 @@ async function syncActualBlock(block) {
   try {
     const event = await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events`, {
       method: "POST",
-      body: JSON.stringify({
-        summary: `Actual: ${categoryLabel(block.categoryId)}`,
-        description: block.note || "Logged from TimeBlock Reality",
-        start: { dateTime: block.start, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
-        end: { dateTime: block.end, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
-        extendedProperties: {
-          private: {
-            ld8: block.categoryId,
-            source: "timeblock-reality",
-          },
-        },
-      }),
+      body: JSON.stringify(actualEventPayload(block)),
     });
     block.googleEventId = event.id;
     block.htmlLink = event.htmlLink || "";
@@ -507,6 +545,37 @@ async function syncActualBlock(block) {
   } catch {
     renderGoogleStatus("Actual local only");
   }
+}
+
+async function updateActualBlock(block) {
+  if (!googleAccessToken || !state.google.actualCalendarId || !block.googleEventId) return;
+
+  try {
+    const event = await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events/${encodeURIComponent(block.googleEventId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(actualEventPayload(block)),
+    });
+    block.htmlLink = event.htmlLink || block.htmlLink || "";
+    saveState();
+    renderGoogleStatus("Actual fixed in GCal");
+  } catch {
+    renderGoogleStatus("Fix local only");
+  }
+}
+
+function actualEventPayload(block) {
+  return {
+    summary: `Actual: ${categoryLabel(block.categoryId)}`,
+    description: block.note || "Logged from TimeBlock Reality",
+    start: { dateTime: block.start, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+    end: { dateTime: block.end, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+    extendedProperties: {
+      private: {
+        ld8: block.categoryId,
+        source: "timeblock-reality",
+      },
+    },
+  };
 }
 
 async function ensureGoogleReady() {
@@ -592,6 +661,10 @@ function categoryLabel(id) {
 
 function categoryShortLabel(id) {
   return categories.find((category) => category.id === id)?.code || id;
+}
+
+function getLastActualBlock() {
+  return state.actual[state.actual.length - 1];
 }
 
 function topCategoryMinutes(blocks, start, end) {

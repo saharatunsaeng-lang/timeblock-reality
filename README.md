@@ -48,6 +48,8 @@ Runtime behavior:
 ## Current scope
 
 - Quick actual capture.
+- Switch capture: tapping another LD8 ends the current actual block and starts the new one.
+- Fix last block.
 - Manual plan blocks.
 - Today view for plan vs actual.
 - Weekly category delta.

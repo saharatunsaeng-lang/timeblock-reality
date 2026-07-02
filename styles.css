@@ -53,6 +53,7 @@ a {
 .topbar,
 .section-heading,
 .status-strip,
+.last-block-strip,
 .time-block,
 .setup-list > div {
   display: flex;
@@ -151,6 +152,7 @@ button:disabled {
 }
 
 .status-strip,
+.last-block-strip,
 .entry-form,
 .metrics-grid > div,
 .review-table-wrap,
@@ -167,9 +169,15 @@ button:disabled {
   margin-bottom: 12px;
 }
 
-.status-strip strong {
+.status-strip strong,
+.last-block-strip strong {
   display: block;
   margin-top: 3px;
+}
+
+.last-block-strip {
+  padding: 12px 14px;
+  margin-bottom: 12px;
 }
 
 .tabs {
