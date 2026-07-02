@@ -50,6 +50,7 @@ Runtime behavior:
 - Quick actual capture.
 - Switch capture: tapping another LD8 ends the current actual block and starts the new one.
 - Fix last block.
+- Visible GCal sync status and retry sync for the last actual block.
 - Manual plan blocks.
 - Today view for plan vs actual.
 - Weekly category delta.

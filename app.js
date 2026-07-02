@@ -34,7 +34,9 @@ const els = {
   manualNote: document.querySelector("#manualNote"),
   fixLastForm: document.querySelector("#fixLastForm"),
   fixLastButton: document.querySelector("#fixLastButton"),
+  syncLastButton: document.querySelector("#syncLastButton"),
   lastBlockTitle: document.querySelector("#lastBlockTitle"),
+  lastSyncStatus: document.querySelector("#lastSyncStatus"),
   planForm: document.querySelector("#planForm"),
   planCategory: document.querySelector("#planCategory"),
   planStart: document.querySelector("#planStart"),
@@ -81,6 +83,7 @@ function bindEvents() {
   els.endBlockButton.addEventListener("click", () => endActiveBlock());
   els.manualForm.addEventListener("submit", fixLastBlock);
   els.fixLastButton.addEventListener("click", toggleFixLastForm);
+  els.syncLastButton.addEventListener("click", retrySyncLastBlock);
   els.planForm.addEventListener("submit", addPlanBlock);
   els.addPlanButton.addEventListener("click", () => {
     els.planForm.hidden = !els.planForm.hidden;
@@ -234,13 +237,17 @@ function renderLastBlock() {
   const block = getLastActualBlock();
   if (!block) {
     els.lastBlockTitle.textContent = "No actual yet";
+    els.lastSyncStatus.textContent = "Not synced";
     els.fixLastButton.disabled = true;
+    els.syncLastButton.disabled = true;
     els.fixLastForm.hidden = true;
     return;
   }
 
   els.lastBlockTitle.textContent = `${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)}`;
+  els.lastSyncStatus.textContent = block.googleEventId ? "Saved to GCal" : syncHint();
   els.fixLastButton.disabled = false;
+  els.syncLastButton.disabled = Boolean(block.googleEventId);
 }
 
 function renderBlocks(type, container) {
@@ -341,6 +348,13 @@ async function fixLastBlock(event) {
   saveState();
   await updateActualBlock(block);
   els.fixLastForm.hidden = true;
+  render();
+}
+
+async function retrySyncLastBlock() {
+  const block = getLastActualBlock();
+  if (!block) return;
+  await syncActualBlock(block, { forceStatus: true });
   render();
 }
 
@@ -530,8 +544,22 @@ async function syncPlanFromGoogle() {
   }
 }
 
-async function syncActualBlock(block) {
-  if (!googleAccessToken || !state.google.actualCalendarId || block.googleEventId) return;
+async function syncActualBlock(block, options = {}) {
+  if (block.googleEventId) {
+    if (options.forceStatus) renderGoogleStatus("Already saved");
+    return;
+  }
+  if (!googleAccessToken) {
+    renderGoogleStatus("Connect GCal first");
+    return;
+  }
+  if (!state.google.actualCalendarId) {
+    await refreshGoogleCalendars();
+  }
+  if (!state.google.actualCalendarId) {
+    renderGoogleStatus("Missing Actual-Time Log");
+    return;
+  }
 
   try {
     const event = await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events`, {
@@ -542,13 +570,28 @@ async function syncActualBlock(block) {
     block.htmlLink = event.htmlLink || "";
     saveState();
     renderGoogleStatus("Actual saved to GCal");
+    render();
   } catch {
     renderGoogleStatus("Actual local only");
   }
 }
 
 async function updateActualBlock(block) {
-  if (!googleAccessToken || !state.google.actualCalendarId || !block.googleEventId) return;
+  if (!block.googleEventId) {
+    await syncActualBlock(block, { forceStatus: true });
+    return;
+  }
+  if (!googleAccessToken) {
+    renderGoogleStatus("Connect GCal first");
+    return;
+  }
+  if (!state.google.actualCalendarId) {
+    await refreshGoogleCalendars();
+  }
+  if (!state.google.actualCalendarId) {
+    renderGoogleStatus("Missing Actual-Time Log");
+    return;
+  }
 
   try {
     const event = await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events/${encodeURIComponent(block.googleEventId)}`, {
@@ -616,6 +659,9 @@ function hasAnyPlanCalendar() {
 
 function renderGoogleStatus(status) {
   els.googleStatus.textContent = status;
+  if (els.lastSyncStatus && getLastActualBlock()) {
+    els.lastSyncStatus.textContent = getLastActualBlock().googleEventId ? "Saved to GCal" : status;
+  }
 }
 
 function renderGoogleState() {
@@ -665,6 +711,12 @@ function categoryShortLabel(id) {
 
 function getLastActualBlock() {
   return state.actual[state.actual.length - 1];
+}
+
+function syncHint() {
+  if (!googleAccessToken) return "Connect GCal first";
+  if (!state.google.actualCalendarId) return "Missing Actual-Time Log";
+  return "Not synced";
 }
 
 function topCategoryMinutes(blocks, start, end) {

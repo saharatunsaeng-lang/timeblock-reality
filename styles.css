@@ -175,9 +175,22 @@ button:disabled {
   margin-top: 3px;
 }
 
+.last-block-strip small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
 .last-block-strip {
   padding: 12px 14px;
   margin-bottom: 12px;
+}
+
+.last-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .tabs {
