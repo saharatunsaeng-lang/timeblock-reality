@@ -24,6 +24,10 @@ The recommended runtime is now the Google Apps Script web app in `apps-script/`.
 - Recommended: Google Apps Script Web App.
 - Legacy prototype: GitHub Pages frontend OAuth.
 
+Production web app:
+
+- <https://script.google.com/macros/s/AKfycbzhzb2xT22srpiT_cN8zy8UaR7QKAvfOut_HRwXyt-Xur-3TsSPpiCo0Vk2kWvLN8lIag/exec>
+
 Required Google Calendar names:
 
 - Plan source: `1 BD`, `2 SP`, `3 MM`, `4 RS`, `5 CM`, `6 FN`, `7 CT`, `8 LS`
@@ -51,7 +55,6 @@ Runtime behavior:
 
 ## Next phase
 
-- Deploy `apps-script/` as the production web app.
 - Push weekly review into the secondbrain memory app.
 - Read actual history back from `Actual-Time Log`.
 - Add stronger duplicate protection for repeated syncs.
