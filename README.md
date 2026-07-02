@@ -4,18 +4,18 @@ Mobile-first companion for a two-calendar time blocking workflow:
 
 - `Plan - Week` for the intended week.
 - `Actual - Time Log` for what actually happened.
-- LD8 Domain as the main time-block type.
+- LD8 code as the main time-block type.
 
 ## LD8 Domains
 
-- `BD - Body & Diet`
-- `SP - Spiritual & Purpose`
-- `MM - Mind & Memory`
-- `RS - Relationships & Social`
-- `CM - Career & Money`
-- `FN - Finance & Numbers`
-- `CT - Contribute`
-- `LS - Lifestyle`
+- `1 BD - Body & Diet`
+- `2 SP - Spiritual & Purpose`
+- `3 MM - Mind & Memory`
+- `4 RS - Relationships & Social`
+- `5 CM - Career & Money`
+- `6 FN - Finance & Numbers`
+- `7 CT - Contribute`
+- `8 LS - Lifestyle`
 
 The first version is local-device first. It stores blocks in browser storage, creates Google Calendar event links for actual blocks, and exports a weekly Markdown review for secondbrain notes.
 

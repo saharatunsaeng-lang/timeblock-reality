@@ -1,12 +1,12 @@
 const categories = [
-  { id: "bd", label: "BD - Body & Diet" },
-  { id: "sp", label: "SP - Spiritual & Purpose" },
-  { id: "mm", label: "MM - Mind & Memory" },
-  { id: "rs", label: "RS - Relationships & Social" },
-  { id: "cm", label: "CM - Career & Money" },
-  { id: "fn", label: "FN - Finance & Numbers" },
-  { id: "ct", label: "CT - Contribute" },
-  { id: "ls", label: "LS - Lifestyle" },
+  { id: "bd", code: "1 BD", name: "Body & Diet" },
+  { id: "sp", code: "2 SP", name: "Spiritual & Purpose" },
+  { id: "mm", code: "3 MM", name: "Mind & Memory" },
+  { id: "rs", code: "4 RS", name: "Relationships & Social" },
+  { id: "cm", code: "5 CM", name: "Career & Money" },
+  { id: "fn", code: "6 FN", name: "Finance & Numbers" },
+  { id: "ct", code: "7 CT", name: "Contribute" },
+  { id: "ls", code: "8 LS", name: "Lifestyle" },
 ];
 
 const storageKey = "timeblock-reality-v2";
@@ -91,7 +91,8 @@ function renderQuickButtons() {
     const button = document.createElement("button");
     button.className = "primary-button";
     button.type = "button";
-    button.textContent = category.label;
+    button.textContent = category.code;
+    button.title = category.name;
     button.addEventListener("click", () => startQuickBlock(category.id));
     els.quickGrid.append(button);
   });
@@ -102,7 +103,7 @@ function fillSelect(select) {
   categories.forEach((category) => {
     const option = document.createElement("option");
     option.value = category.id;
-    option.textContent = category.label;
+    option.textContent = category.code;
     select.append(option);
   });
 }
@@ -346,11 +347,12 @@ function saveState() {
 }
 
 function categoryLabel(id) {
-  return categories.find((category) => category.id === id)?.label || id;
+  const category = categories.find((item) => item.id === id);
+  return category ? `${category.code} - ${category.name}` : id;
 }
 
 function categoryShortLabel(id) {
-  return categoryLabel(id).split(" - ")[0];
+  return categories.find((category) => category.id === id)?.code || id;
 }
 
 function topCategoryMinutes(blocks, start, end) {
