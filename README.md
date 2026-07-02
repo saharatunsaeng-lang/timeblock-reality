@@ -17,13 +17,12 @@ Mobile-first companion for an LD8 calendar time blocking workflow:
 - `7 CT - Contribute`
 - `8 LS - Lifestyle`
 
-The first version is local-device first. It stores blocks in browser storage, creates Google Calendar event links for actual blocks, and exports a weekly Markdown review for secondbrain notes.
+The recommended runtime is now the Google Apps Script web app in `apps-script/`. GitHub Pages was useful for the first prototype, but frontend-only OAuth is not stable enough for daily iPhone capture.
 
-## Google Calendar integration
+## Runtime
 
-OAuth client:
-
-- `809951458535-dg6gjp5nk4fjrgs1kngrger4cni90er9.apps.googleusercontent.com`
+- Recommended: Google Apps Script Web App.
+- Legacy prototype: GitHub Pages frontend OAuth.
 
 Required Google Calendar names:
 
@@ -32,18 +31,12 @@ Required Google Calendar names:
 - Supported actual alias: `Actual - Time Log`
 - Optional plan marker aliases: `Plan-Week`, `Plan - Week`
 
-Expected Google Cloud setup:
-
-- Google Calendar API enabled.
-- OAuth web client authorized JavaScript origin: `https://saharatunsaeng-lang.github.io`.
-- Optional local dev origin: `http://localhost:4173`.
-
 Runtime behavior:
 
-- `Connect GCal` requests access in the browser.
+- Apps Script is authorized once with the user's Google account.
 - `Sync Plan` imports the current week from the 8 LD8 calendars.
-- New actual blocks are written to `Actual-Time Log` when connected.
-- Access tokens stay in browser memory; calendar IDs are stored locally.
+- New actual blocks are written server-side to `Actual-Time Log`.
+- No recurring `Connect GCal` step is needed in normal use.
 
 ## Current scope
 
@@ -54,14 +47,11 @@ Runtime behavior:
 - Manual plan blocks.
 - Today view for plan vs actual.
 - Weekly category delta.
-- Markdown export.
-- GitHub Pages deployment.
-- Google Calendar OAuth connect.
-- Plan calendar sync.
-- Actual event write.
+- Apps Script Calendar sync.
 
 ## Next phase
 
+- Deploy `apps-script/` as the production web app.
 - Push weekly review into the secondbrain memory app.
 - Read actual history back from `Actual-Time Log`.
 - Add stronger duplicate protection for repeated syncs.
