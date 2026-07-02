@@ -1,10 +1,10 @@
-const cacheName = "timeblock-reality-v5";
+const cacheName = "timeblock-reality-v6";
 const assets = [
-  "./?v=20260702-gcal",
-  "index.html?v=20260702-gcal",
-  "styles.css?v=20260702-gcal",
-  "app.js?v=20260702-gcal",
-  "manifest.webmanifest?v=20260702-gcal",
+  "./?v=20260702-ld8-plan",
+  "index.html?v=20260702-ld8-plan",
+  "styles.css?v=20260702-ld8-plan",
+  "app.js?v=20260702-ld8-plan",
+  "manifest.webmanifest?v=20260702-ld8-plan",
   "icon.svg",
 ];
 

@@ -1,10 +1,10 @@
 # TimeBlock Reality
 
-Mobile-first companion for a two-calendar time blocking workflow:
+Mobile-first companion for an LD8 calendar time blocking workflow:
 
-- `Plan - Week` for the intended week.
-- `Actual - Time Log` for what actually happened.
-- LD8 code as the main time-block type.
+- Plan source: the 8 LD8 Google Calendars.
+- Actual source: `Actual-Time Log`.
+- LD8 code as the main capture type.
 
 ## LD8 Domains
 
@@ -27,8 +27,10 @@ OAuth client:
 
 Required Google Calendar names:
 
-- `Plan - Week`
-- `Actual - Time Log`
+- Plan source: `1 BD`, `2 SP`, `3 MM`, `4 RS`, `5 CM`, `6 FN`, `7 CT`, `8 LS`
+- Actual source: `Actual-Time Log`
+- Supported actual alias: `Actual - Time Log`
+- Optional plan marker aliases: `Plan-Week`, `Plan - Week`
 
 Expected Google Cloud setup:
 
@@ -39,8 +41,8 @@ Expected Google Cloud setup:
 Runtime behavior:
 
 - `Connect GCal` requests access in the browser.
-- `Sync Plan` imports the current week from `Plan - Week`.
-- New actual blocks are written to `Actual - Time Log` when connected.
+- `Sync Plan` imports the current week from the 8 LD8 calendars.
+- New actual blocks are written to `Actual-Time Log` when connected.
 - Access tokens stay in browser memory; calendar IDs are stored locally.
 
 ## Current scope
@@ -57,7 +59,6 @@ Runtime behavior:
 
 ## Next phase
 
-- Google Calendar OAuth.
-- Read `Plan - Week` and `Actual - Time Log` directly.
-- Write actual blocks directly to the selected actual calendar.
 - Push weekly review into the secondbrain memory app.
+- Read actual history back from `Actual-Time Log`.
+- Add stronger duplicate protection for repeated syncs.

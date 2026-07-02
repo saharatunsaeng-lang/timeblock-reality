@@ -15,8 +15,8 @@ const googleScopes = [
   "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
   "https://www.googleapis.com/auth/calendar.events",
 ].join(" ");
-const planCalendarName = "Plan - Week";
-const actualCalendarName = "Actual - Time Log";
+const actualCalendarNames = ["Actual-Time Log", "Actual - Time Log"];
+const planMarkerCalendarNames = ["Plan-Week", "Plan - Week"];
 const state = loadState();
 let deferredInstallPrompt = null;
 let tokenClient = null;
@@ -410,10 +410,15 @@ async function refreshGoogleCalendars() {
   try {
     const data = await gcalFetch("/users/me/calendarList");
     const calendars = data.items || [];
-    const plan = calendars.find((calendar) => calendar.summary === planCalendarName);
-    const actual = calendars.find((calendar) => calendar.summary === actualCalendarName);
-    state.google.planCalendarId = plan?.id || "";
+    const byName = new Map(calendars.map((calendar) => [calendar.summary, calendar]));
+    state.google.planCalendarIds = Object.fromEntries(
+      categories.map((category) => [category.id, byName.get(category.code)?.id || ""]),
+    );
+    const markerPlan = calendars.find((calendar) => planMarkerCalendarNames.includes(calendar.summary));
+    const actual = calendars.find((calendar) => actualCalendarNames.includes(calendar.summary));
+    state.google.planCalendarId = markerPlan?.id || "";
     state.google.actualCalendarId = actual?.id || "";
+    state.google.actualCalendarName = actual?.summary || "";
     saveState();
     renderGoogleState();
   } catch {
@@ -423,8 +428,12 @@ async function refreshGoogleCalendars() {
 
 async function syncPlanFromGoogle() {
   if (!(await ensureGoogleReady())) return;
-  if (!state.google.planCalendarId) {
-    renderGoogleStatus("Missing Plan calendar");
+  const planSources = categories
+    .map((category) => ({ ...category, calendarId: state.google.planCalendarIds?.[category.id] || "" }))
+    .filter((category) => category.calendarId);
+
+  if (planSources.length === 0) {
+    renderGoogleStatus("Missing LD8 calendars");
     return;
   }
 
@@ -439,25 +448,34 @@ async function syncPlanFromGoogle() {
 
   try {
     renderGoogleStatus("Syncing plan...");
-    const data = await gcalFetch(`/calendars/${encodeURIComponent(state.google.planCalendarId)}/events?${params.toString()}`);
+    const results = await Promise.all(
+      planSources.map(async (category) => {
+        const data = await gcalFetch(`/calendars/${encodeURIComponent(category.calendarId)}/events?${params.toString()}`);
+        return { category, items: data.items || [] };
+      }),
+    );
     state.plan = state.plan.filter((block) => block.source !== "gcal-plan" || new Date(block.start) < start || new Date(block.start) >= end);
-    (data.items || [])
-      .filter((event) => event.start?.dateTime && event.end?.dateTime)
-      .forEach((event) => {
-        state.plan.push({
-          id: `gcal-plan-${event.id}`,
-          categoryId: inferCategoryId(event.summary || ""),
-          note: event.summary || "",
-          start: event.start.dateTime,
-          end: event.end.dateTime,
-          source: "gcal-plan",
-          googleEventId: event.id,
-          htmlLink: event.htmlLink || "",
+    let importedCount = 0;
+    results.forEach(({ category, items }) => {
+      items
+        .filter((event) => event.start?.dateTime && event.end?.dateTime)
+        .forEach((event) => {
+          importedCount += 1;
+          state.plan.push({
+            id: `gcal-plan-${category.id}-${event.id}`,
+            categoryId: category.id,
+            note: event.summary || "",
+            start: event.start.dateTime,
+            end: event.end.dateTime,
+            source: "gcal-plan",
+            googleEventId: event.id,
+            htmlLink: event.htmlLink || "",
+          });
         });
-      });
+    });
     saveState();
     render();
-    renderGoogleStatus(`Synced ${data.items?.length || 0} plan`);
+    renderGoogleStatus(`Synced ${importedCount} plan`);
   } catch {
     renderGoogleStatus("Plan sync failed");
   }
@@ -496,10 +514,10 @@ async function ensureGoogleReady() {
     connectGoogle();
     return false;
   }
-  if (!state.google.planCalendarId || !state.google.actualCalendarId) {
+  if (!hasAnyPlanCalendar() || !state.google.actualCalendarId) {
     await refreshGoogleCalendars();
   }
-  return Boolean(state.google.planCalendarId || state.google.actualCalendarId);
+  return Boolean(hasAnyPlanCalendar() || state.google.actualCalendarId);
 }
 
 async function gcalFetch(path, options = {}) {
@@ -523,6 +541,10 @@ function inferCategoryId(text) {
   );
 }
 
+function hasAnyPlanCalendar() {
+  return Object.values(state.google.planCalendarIds || {}).some(Boolean);
+}
+
 function renderGoogleStatus(status) {
   els.googleStatus.textContent = status;
 }
@@ -531,8 +553,9 @@ function renderGoogleState() {
   els.connectGoogleButton.disabled = !tokenClient;
   els.syncPlanButton.disabled = !googleAccessToken;
   els.googleStatus.textContent = googleAccessToken ? "Connected" : "Not connected";
-  els.planCalendarStatus.textContent = state.google.planCalendarId ? `${planCalendarName} found` : planCalendarName;
-  els.actualCalendarStatus.textContent = state.google.actualCalendarId ? `${actualCalendarName} found` : actualCalendarName;
+  const foundPlanCount = Object.values(state.google.planCalendarIds || {}).filter(Boolean).length;
+  els.planCalendarStatus.textContent = foundPlanCount ? `${foundPlanCount}/8 LD8 found` : "LD8 calendars";
+  els.actualCalendarStatus.textContent = state.google.actualCalendarId ? `${state.google.actualCalendarName || actualCalendarNames[0]} found` : actualCalendarNames[0];
 }
 
 function loadState() {
@@ -552,7 +575,9 @@ function loadState() {
 function defaultGoogleState() {
   return {
     planCalendarId: "",
+    planCalendarIds: {},
     actualCalendarId: "",
+    actualCalendarName: "",
   };
 }
 
