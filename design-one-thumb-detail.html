@@ -1,0 +1,1047 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TimeBlock Reality - One Thumb Detail</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --page: #f2eee6;
+        --paper: #fffdfa;
+        --ink: #20201c;
+        --muted: #726c61;
+        --line: #d9d0c2;
+        --green: #166f61;
+        --green-soft: #e6f1ed;
+        --blue: #315f8c;
+        --blue-soft: #e9f0f8;
+        --amber: #ab7027;
+        --amber-soft: #f6ebdb;
+        --red: #9b4741;
+        --red-soft: #f5e8e6;
+        --white: #ffffff;
+        --shadow: 0 16px 46px rgba(35, 30, 20, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--page);
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+
+      .board {
+        width: min(1440px, calc(100vw - 36px));
+        margin: 0 auto;
+        padding: 30px 0 54px;
+      }
+
+      .board-top {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 24px;
+        align-items: end;
+        margin-bottom: 20px;
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 900;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(30px, 4vw, 54px);
+        line-height: 0.96;
+      }
+
+      .board-top p {
+        max-width: 720px;
+        margin: 12px 0 0;
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1.45;
+        font-weight: 680;
+      }
+
+      .decision {
+        width: min(420px, 100%);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--paper);
+        padding: 14px;
+        box-shadow: var(--shadow);
+      }
+
+      .decision h2 {
+        margin: 0 0 10px;
+        font-size: 16px;
+      }
+
+      .decision ul {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.45;
+        font-weight: 680;
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+
+      .flow div {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 253, 250, 0.72);
+        padding: 12px;
+        min-height: 74px;
+      }
+
+      .flow strong {
+        display: block;
+        margin-bottom: 5px;
+      }
+
+      .flow span {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.35;
+        font-weight: 680;
+      }
+
+      .screens {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .screen-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--paper);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .screen-card > header {
+        padding: 16px 16px 12px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .screen-card h2 {
+        margin: 0;
+        font-size: 20px;
+      }
+
+      .screen-card header p {
+        min-height: 38px;
+        margin: 7px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.35;
+        font-weight: 680;
+      }
+
+      .phone-wrap {
+        display: flex;
+        justify-content: center;
+        padding: 16px;
+      }
+
+      .phone {
+        width: 292px;
+        min-height: 632px;
+        border: 8px solid #181713;
+        border-radius: 34px;
+        overflow: hidden;
+        background: #f8f3ea;
+        box-shadow: 0 18px 42px rgba(20, 18, 12, 0.2);
+      }
+
+      .app {
+        position: relative;
+        min-height: 616px;
+        padding: 14px 14px 74px;
+      }
+
+      .app-header,
+      .row,
+      .now-card,
+      .last-card,
+      .log-row,
+      .metric,
+      .setting-row,
+      .sheet-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .date {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .app-title {
+        margin: 2px 0 0;
+        font-size: 28px;
+        line-height: 0.96;
+      }
+
+      .brand {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 950;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+      }
+
+      .round {
+        width: 38px;
+        height: 38px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--white);
+        color: var(--ink);
+        font-weight: 950;
+      }
+
+      .now-card,
+      .last-card,
+      .status-card,
+      .form-card,
+      .timeline-card,
+      .review-card,
+      .settings-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--paper);
+      }
+
+      .now-card {
+        margin: 16px 0 12px;
+        padding: 12px;
+      }
+
+      .label {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 950;
+        text-transform: uppercase;
+      }
+
+      .value {
+        display: block;
+        margin-top: 2px;
+        font-size: 16px;
+        font-weight: 950;
+      }
+
+      .end {
+        min-width: 66px;
+        min-height: 42px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--ink);
+        color: #fff;
+        font-weight: 950;
+      }
+
+      .end.green {
+        background: var(--green);
+      }
+
+      .end:disabled {
+        opacity: 0.4;
+      }
+
+      .domain-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 9px;
+      }
+
+      .domain {
+        min-height: 68px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--white);
+        color: var(--ink);
+        font-size: 22px;
+        font-weight: 950;
+      }
+
+      .domain.active {
+        border-color: var(--green);
+        background: var(--green);
+        color: #fff;
+      }
+
+      .domain.compact {
+        min-height: 42px;
+        font-size: 15px;
+      }
+
+      .last-card {
+        margin-top: 12px;
+        padding: 11px;
+        background: var(--green-soft);
+      }
+
+      .last-card strong {
+        display: block;
+        font-size: 14px;
+      }
+
+      .link-btn {
+        min-height: 34px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--white);
+        padding: 0 10px;
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .bottom-nav {
+        position: absolute;
+        left: 14px;
+        right: 14px;
+        bottom: 12px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 7px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: rgba(255, 253, 250, 0.94);
+        padding: 6px;
+      }
+
+      .nav-btn {
+        min-height: 40px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 950;
+      }
+
+      .nav-btn.active {
+        background: var(--ink);
+        color: #fff;
+      }
+
+      .section-title {
+        margin: 18px 0 10px;
+        font-size: 17px;
+      }
+
+      .timeline-card,
+      .review-card,
+      .settings-card,
+      .status-card,
+      .form-card {
+        padding: 12px;
+      }
+
+      .timeline {
+        display: grid;
+        gap: 8px;
+      }
+
+      .slot {
+        display: grid;
+        grid-template-columns: 42px 1fr;
+        gap: 8px;
+      }
+
+      .slot time {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 900;
+      }
+
+      .block {
+        min-height: 42px;
+        border-left: 4px solid var(--blue);
+        border-radius: 8px;
+        background: var(--blue-soft);
+        padding: 8px;
+      }
+
+      .block.actual {
+        border-color: var(--green);
+        background: var(--green-soft);
+      }
+
+      .block strong {
+        display: block;
+        font-size: 13px;
+      }
+
+      .block span {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 750;
+      }
+
+      .mini-capture {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 6px;
+        margin-top: 12px;
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+
+      .metric {
+        min-height: 66px;
+        align-items: flex-start;
+        flex-direction: column;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--white);
+        padding: 10px;
+      }
+
+      .metric strong {
+        font-size: 20px;
+      }
+
+      .bar {
+        height: 10px;
+        border-radius: 999px;
+        background: #ebe3d7;
+        overflow: hidden;
+      }
+
+      .bar span {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: var(--green);
+      }
+
+      .review-list,
+      .settings-list,
+      .log-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .log-row,
+      .setting-row {
+        min-height: 48px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--white);
+        padding: 9px;
+      }
+
+      .log-row strong,
+      .setting-row strong {
+        display: block;
+        font-size: 13px;
+      }
+
+      .tag {
+        border-radius: 999px;
+        background: var(--green-soft);
+        color: #23564e;
+        padding: 5px 8px;
+        font-size: 11px;
+        font-weight: 950;
+      }
+
+      .tag.warn {
+        background: var(--amber-soft);
+        color: #704a1d;
+      }
+
+      .tag.bad {
+        background: var(--red-soft);
+        color: var(--red);
+      }
+
+      .form-card label {
+        display: block;
+        margin-bottom: 9px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .form-card input,
+      .form-card select {
+        width: 100%;
+        min-height: 42px;
+        margin-top: 5px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--white);
+        padding: 0 10px;
+        color: var(--ink);
+        font-weight: 850;
+      }
+
+      .two {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+
+      .primary {
+        width: 100%;
+        min-height: 46px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--green);
+        color: #fff;
+        font-weight: 950;
+      }
+
+      .empty-state {
+        display: grid;
+        place-items: center;
+        min-height: 290px;
+        border: 1px dashed #cfc3b4;
+        border-radius: 8px;
+        background: rgba(255, 253, 250, 0.64);
+        text-align: center;
+        padding: 18px;
+      }
+
+      .empty-state strong {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 18px;
+      }
+
+      .empty-state span {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.4;
+        font-weight: 680;
+      }
+
+      .sheet {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        border-top: 1px solid var(--line);
+        border-radius: 20px 20px 0 0;
+        background: var(--paper);
+        box-shadow: 0 -18px 34px rgba(28, 25, 18, 0.16);
+        padding: 14px;
+      }
+
+      .scrim {
+        position: absolute;
+        inset: 0;
+        background: rgba(30, 28, 22, 0.24);
+      }
+
+      .screen-note {
+        margin: 0 16px 16px;
+        border-top: 1px solid var(--line);
+        padding-top: 12px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.4;
+        font-weight: 680;
+      }
+
+      .screen-note strong {
+        color: var(--ink);
+      }
+
+      @media (max-width: 1180px) {
+        .board-top {
+          grid-template-columns: 1fr;
+        }
+
+        .decision {
+          width: 100%;
+        }
+
+        .screens {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 760px) {
+        .board {
+          width: min(100vw - 24px, 360px);
+          padding-top: 22px;
+        }
+
+        .flow,
+        .screens {
+          grid-template-columns: 1fr;
+        }
+
+        .phone {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="board">
+      <header class="board-top">
+        <div>
+          <p class="eyebrow">One Thumb Capture - Detailed Front End</p>
+          <h1>TimeBlock Reality</h1>
+          <p>แบบนี้ตัดความซับซ้อนจากหน้าแรกออกให้เหลือการกดจับเวลาเป็นหลัก ส่วน Today, Review, More เป็นชั้นรองที่เข้าได้จาก bottom nav เท่านั้น</p>
+        </div>
+        <aside class="decision">
+          <h2>Product rules</h2>
+          <ul>
+            <li>เปิดมาเจอปุ่ม LD8 ทันที ไม่เริ่มด้วย dashboard</li>
+            <li>Fix/Setup ไม่แย่งพื้นที่หน้า Capture</li>
+            <li>ใช้ชื่อย่อ LD8 เป็นภาษาหลักของ UI</li>
+            <li>ทุกหน้าอ่านจาก/เขียนเข้า Google Calendar ผ่าน Apps Script</li>
+          </ul>
+        </aside>
+      </header>
+
+      <section class="flow" aria-label="Flow">
+        <div><strong>1. Tap LD8</strong><span>เริ่ม block ด้วยนิ้วเดียว ไม่ต้องเลือก dropdown</span></div>
+        <div><strong>2. End</strong><span>กดจบแล้วบันทึกเข้า Actual-Time Log ทันที</span></div>
+        <div><strong>3. Fix only if needed</strong><span>แก้ย้อนหลังอยู่หลัง last block หรือ bottom sheet</span></div>
+        <div><strong>4. Review later</strong><span>ดู plan drift และ weekly summary เมื่ออยากทบทวน</span></div>
+      </section>
+
+      <section class="screens" aria-label="Detailed screens">
+        <article class="screen-card">
+          <header>
+            <h2>Capture - Active</h2>
+            <p>หน้าหลักประจำวัน ใช้บ่อยสุด ปุ่มใหญ่และไม่มีฟอร์มบนจอหลัก</p>
+          </header>
+          <div class="phone-wrap">
+            <div class="phone">
+              <div class="app">
+                <div class="app-header">
+                  <div>
+                    <div class="brand">TimeBlock</div>
+                    <h3 class="app-title">Reality</h3>
+                  </div>
+                  <div class="date">พฤ 2 ก.ค.</div>
+                </div>
+                <section class="now-card">
+                  <div>
+                    <span class="label">Now</span>
+                    <strong class="value">5 CM 16:40</strong>
+                  </div>
+                  <button class="end">End</button>
+                </section>
+                <div class="domain-grid">
+                  <button class="domain">1 BD</button>
+                  <button class="domain">2 SP</button>
+                  <button class="domain">3 MM</button>
+                  <button class="domain">4 RS</button>
+                  <button class="domain active">5 CM</button>
+                  <button class="domain">6 FN</button>
+                  <button class="domain">7 CT</button>
+                  <button class="domain">8 LS</button>
+                </div>
+                <section class="last-card">
+                  <div>
+                    <span class="label">Last</span>
+                    <strong>1 BD 16:55-17:00</strong>
+                    <span class="tag">Saved to GCal</span>
+                  </div>
+                  <button class="link-btn">Fix</button>
+                </section>
+                <nav class="bottom-nav">
+                  <button class="nav-btn active">Capture</button>
+                  <button class="nav-btn">Today</button>
+                  <button class="nav-btn">More</button>
+                </nav>
+              </div>
+            </div>
+          </div>
+          <p class="screen-note"><strong>Key change:</strong> ตัด tab 4 อันด้านบนออก เหลือ bottom nav 3 อัน และเอา manual form ออกจากหน้าแรก</p>
+        </article>
+
+        <article class="screen-card">
+          <header>
+            <h2>Capture - Idle</h2>
+            <p>ตอนยังไม่มี block active หน้ายังเหมือนเดิม แต่ End ถูกลดน้ำหนัก ไม่กวนสายตา</p>
+          </header>
+          <div class="phone-wrap">
+            <div class="phone">
+              <div class="app">
+                <div class="app-header">
+                  <div>
+                    <div class="brand">TimeBlock</div>
+                    <h3 class="app-title">Reality</h3>
+                  </div>
+                  <button class="round">...</button>
+                </div>
+                <section class="now-card">
+                  <div>
+                    <span class="label">Now</span>
+                    <strong class="value">No active block</strong>
+                  </div>
+                  <button class="end" disabled>End</button>
+                </section>
+                <div class="domain-grid">
+                  <button class="domain">1 BD</button>
+                  <button class="domain">2 SP</button>
+                  <button class="domain">3 MM</button>
+                  <button class="domain">4 RS</button>
+                  <button class="domain">5 CM</button>
+                  <button class="domain">6 FN</button>
+                  <button class="domain">7 CT</button>
+                  <button class="domain">8 LS</button>
+                </div>
+                <section class="last-card">
+                  <div>
+                    <span class="label">Last</span>
+                    <strong>5 CM 14:51-14:57</strong>
+                    <span class="tag">Saved to GCal</span>
+                  </div>
+                  <button class="link-btn">Fix</button>
+                </section>
+                <nav class="bottom-nav">
+                  <button class="nav-btn active">Capture</button>
+                  <button class="nav-btn">Today</button>
+                  <button class="nav-btn">More</button>
+                </nav>
+              </div>
+            </div>
+          </div>
+          <p class="screen-note"><strong>Behavior:</strong> แตะ LD8 ใด ๆ คือเริ่ม block ทันที ถ้ามี active อยู่จะจบ block เดิมก่อนแล้วเริ่มอันใหม่</p>
+        </article>
+
+        <article class="screen-card">
+          <header>
+            <h2>Today</h2>
+            <p>วันนี้ไม่ใช่หน้ากดหลัก แต่ใช้ตรวจว่าแผนกับ actual เบี้ยวตรงไหน</p>
+          </header>
+          <div class="phone-wrap">
+            <div class="phone">
+              <div class="app">
+                <div class="app-header">
+                  <div>
+                    <div class="brand">Today</div>
+                    <h3 class="app-title">Plan vs Actual</h3>
+                  </div>
+                  <span class="tag warn">-42m</span>
+                </div>
+                <h4 class="section-title">Timeline</h4>
+                <section class="timeline-card">
+                  <div class="timeline">
+                    <div class="slot"><time>09:00</time><div class="block"><strong>Plan 1 BD</strong><span>Body reset</span></div></div>
+                    <div class="slot"><time>10:30</time><div class="block actual"><strong>Actual 5 CM</strong><span>Admin work</span></div></div>
+                    <div class="slot"><time>13:00</time><div class="block"><strong>Plan 3 MM</strong><span>Writing</span></div></div>
+                    <div class="slot"><time>15:30</time><div class="block actual"><strong>Actual 1 BD</strong><span>Recovery</span></div></div>
+                  </div>
+                </section>
+                <div class="mini-capture">
+                  <button class="domain compact">1</button>
+                  <button class="domain compact">2</button>
+                  <button class="domain compact">3</button>
+                  <button class="domain compact">4</button>
+                  <button class="domain compact active">5</button>
+                  <button class="domain compact">6</button>
+                  <button class="domain compact">7</button>
+                  <button class="domain compact">8</button>
+                </div>
+                <nav class="bottom-nav">
+                  <button class="nav-btn">Capture</button>
+                  <button class="nav-btn active">Today</button>
+                  <button class="nav-btn">More</button>
+                </nav>
+              </div>
+            </div>
+          </div>
+          <p class="screen-note"><strong>Rule:</strong> Today มี quick capture เล็กได้ แต่ไม่ควรใหญ่เท่าหน้า Capture เพื่อไม่ให้บทบาทซ้ำกัน</p>
+        </article>
+
+        <article class="screen-card">
+          <header>
+            <h2>Review</h2>
+            <p>รวม weekly signal แบบอ่านเร็ว ไม่ใช่ dashboard หนัก ๆ</p>
+          </header>
+          <div class="phone-wrap">
+            <div class="phone">
+              <div class="app">
+                <div class="app-header">
+                  <div>
+                    <div class="brand">Weekly</div>
+                    <h3 class="app-title">Review</h3>
+                  </div>
+                  <button class="round">Go</button>
+                </div>
+                <section class="summary-grid">
+                  <div class="metric"><span class="label">Plan</span><strong>26h</strong></div>
+                  <div class="metric"><span class="label">Actual</span><strong>21h</strong></div>
+                  <div class="metric"><span class="label">Match</span><strong>68%</strong></div>
+                  <div class="metric"><span class="label">Noise</span><strong>4h</strong></div>
+                </section>
+                <section class="review-card">
+                  <div class="review-list">
+                    <div>
+                      <div class="row"><strong>1 BD</strong><span>7h / 6h</span></div>
+                      <div class="bar"><span style="width: 86%"></span></div>
+                    </div>
+                    <div>
+                      <div class="row"><strong>3 MM</strong><span>5h / 2h</span></div>
+                      <div class="bar"><span style="width: 40%; background: var(--amber)"></span></div>
+                    </div>
+                    <div>
+                      <div class="row"><strong>5 CM</strong><span>4h / 7h</span></div>
+                      <div class="bar"><span style="width: 100%; background: var(--blue)"></span></div>
+                    </div>
+                  </div>
+                </section>
+                <h4 class="section-title">Notes for secondbrain</h4>
+                <section class="status-card">
+                  <strong>CM overran plan. MM got compressed.</strong>
+                </section>
+                <nav class="bottom-nav">
+                  <button class="nav-btn">Capture</button>
+                  <button class="nav-btn">Today</button>
+                  <button class="nav-btn active">More</button>
+                </nav>
+              </div>
+            </div>
+          </div>
+          <p class="screen-note"><strong>Placement:</strong> Review อยู่ใน More ไม่อยู่ nav หลัก เพราะไม่ใช่งานที่ต้องกดหลายครั้งต่อวัน</p>
+        </article>
+
+        <article class="screen-card">
+          <header>
+            <h2>More / Setup</h2>
+            <p>รวมของที่ใช้ไม่บ่อย: sync, calendar health, export, reset</p>
+          </header>
+          <div class="phone-wrap">
+            <div class="phone">
+              <div class="app">
+                <div class="app-header">
+                  <div>
+                    <div class="brand">More</div>
+                    <h3 class="app-title">Tools</h3>
+                  </div>
+                  <span class="tag">GCal OK</span>
+                </div>
+                <h4 class="section-title">Calendar</h4>
+                <section class="settings-card">
+                  <div class="settings-list">
+                    <div class="setting-row"><div><span class="label">Actual</span><strong>Actual-Time Log</strong></div><span class="tag">OK</span></div>
+                    <div class="setting-row"><div><span class="label">Plan</span><strong>8 LD8 calendars</strong></div><span class="tag">OK</span></div>
+                    <div class="setting-row"><div><span class="label">Last sync</span><strong>17:00 today</strong></div><span class="tag">OK</span></div>
+                  </div>
+                </section>
+                <h4 class="section-title">Actions</h4>
+                <section class="settings-card">
+                  <div class="settings-list">
+                    <div class="setting-row"><strong>Sync today</strong><button class="link-btn">Run</button></div>
+                    <div class="setting-row"><strong>Export week</strong><button class="link-btn">Copy</button></div>
+                    <div class="setting-row"><strong>Reset local cache</strong><span class="tag bad">Danger</span></div>
+                  </div>
+                </section>
+                <nav class="bottom-nav">
+                  <button class="nav-btn">Capture</button>
+                  <button class="nav-btn">Today</button>
+                  <button class="nav-btn active">More</button>
+                </nav>
+              </div>
+            </div>
+          </div>
+          <p class="screen-note"><strong>Key change:</strong> Setup ไม่เป็น tab ใหญ่แยกเด่นแล้ว เพราะหลังใช้ Apps Script ไม่ควรต้อง connect บ่อย</p>
+        </article>
+
+        <article class="screen-card">
+          <header>
+            <h2>Fix Last - Bottom Sheet</h2>
+            <p>Fix เป็น action เฉพาะตอนข้อมูลผิด จึงเป็น sheet ชั่วคราว ไม่กินที่หน้า Capture</p>
+          </header>
+          <div class="phone-wrap">
+            <div class="phone">
+              <div class="app">
+                <div class="scrim"></div>
+                <div class="app-header">
+                  <div>
+                    <div class="brand">TimeBlock</div>
+                    <h3 class="app-title">Reality</h3>
+                  </div>
+                  <div class="date">พฤ 2 ก.ค.</div>
+                </div>
+                <section class="now-card">
+                  <div>
+                    <span class="label">Now</span>
+                    <strong class="value">No active block</strong>
+                  </div>
+                  <button class="end" disabled>End</button>
+                </section>
+                <div class="domain-grid">
+                  <button class="domain">1 BD</button>
+                  <button class="domain">2 SP</button>
+                  <button class="domain">3 MM</button>
+                  <button class="domain">4 RS</button>
+                  <button class="domain">5 CM</button>
+                  <button class="domain">6 FN</button>
+                  <button class="domain">7 CT</button>
+                  <button class="domain">8 LS</button>
+                </div>
+                <section class="sheet">
+                  <div class="sheet-head">
+                    <div>
+                      <span class="label">Fix last</span>
+                      <strong>1 BD 16:55-17:00</strong>
+                    </div>
+                    <button class="round">x</button>
+                  </div>
+                  <div class="form-card" style="margin-top: 12px">
+                    <label>LD8<select><option>1 BD</option></select></label>
+                    <div class="two">
+                      <label>Start<input value="16:55" /></label>
+                      <label>End<input value="17:00" /></label>
+                    </div>
+                    <label>Note<input value="" placeholder="optional" /></label>
+                    <button class="primary">Save fix</button>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+          <p class="screen-note"><strong>Behavior:</strong> Save fix ควร update event เดิมใน GCal ถ้ามี event id ไม่สร้างซ้ำ</p>
+        </article>
+
+        <article class="screen-card">
+          <header>
+            <h2>First Run / Empty</h2>
+            <p>กรณีเพิ่งเปิดครั้งแรกหลัง deploy หรือยังไม่มี actual ของวันนี้</p>
+          </header>
+          <div class="phone-wrap">
+            <div class="phone">
+              <div class="app">
+                <div class="app-header">
+                  <div>
+                    <div class="brand">TimeBlock</div>
+                    <h3 class="app-title">Reality</h3>
+                  </div>
+                  <span class="tag">Ready</span>
+                </div>
+                <section class="now-card">
+                  <div>
+                    <span class="label">Now</span>
+                    <strong class="value">No active block</strong>
+                  </div>
+                  <button class="end" disabled>End</button>
+                </section>
+                <div class="empty-state">
+                  <div>
+                    <strong>Start with one tap</strong>
+                    <span>เลือก LD8 ที่กำลังทำอยู่ แล้ว app จะบันทึกลง Actual-Time Log เมื่อกด End</span>
+                  </div>
+                </div>
+                <div class="mini-capture">
+                  <button class="domain compact">1 BD</button>
+                  <button class="domain compact">2 SP</button>
+                  <button class="domain compact">3 MM</button>
+                  <button class="domain compact">4 RS</button>
+                  <button class="domain compact">5 CM</button>
+                  <button class="domain compact">6 FN</button>
+                  <button class="domain compact">7 CT</button>
+                  <button class="domain compact">8 LS</button>
+                </div>
+                <nav class="bottom-nav">
+                  <button class="nav-btn active">Capture</button>
+                  <button class="nav-btn">Today</button>
+                  <button class="nav-btn">More</button>
+                </nav>
+              </div>
+            </div>
+          </div>
+          <p class="screen-note"><strong>Empty state:</strong> อธิบายให้น้อยที่สุด เพราะผู้ใช้กลับมาซ้ำทุกวัน ไม่ควรเห็นคู่มือยาว</p>
+        </article>
+
+        <article class="screen-card">
+          <header>
+            <h2>Error / Retry</h2>
+            <p>เมื่อ GCal เขียนไม่สำเร็จ ต้องบอกสถานะชัดและให้ retry ไม่ใช่ปล่อยให้ user เดา</p>
+          </header>
+          <div class="phone-wrap">
+            <div class="phone">
+              <div class="app">
+                <div class="app-header">
+                  <div>
+                    <div class="brand">TimeBlock</div>
+                    <h3 class="app-title">Reality</h3>
+                  </div>
+                  <span class="tag bad">Sync issue</span>
+                </div>
+                <section class="now-card">
+                  <div>
+                    <span class="label">Now</span>
+                    <strong class="value">No active block</strong>
+                  </div>
+                  <button class="end" disabled>End</button>
+                </section>
+                <section class="last-card" style="background: var(--red-soft)">
+                  <div>
+                    <span class="label">Last</span>
+                    <strong>5 CM 17:05-17:20</strong>
+                    <span class="tag bad">Not saved</span>
+                  </div>
+                  <button class="link-btn">Retry</button>
+                </section>
+                <h4 class="section-title">Keep capturing</h4>
+                <div class="domain-grid">
+                  <button class="domain">1 BD</button>
+                  <button class="domain">2 SP</button>
+                  <button class="domain">3 MM</button>
+                  <button class="domain">4 RS</button>
+                  <button class="domain">5 CM</button>
+                  <button class="domain">6 FN</button>
+                  <button class="domain">7 CT</button>
+                  <button class="domain">8 LS</button>
+                </div>
+                <nav class="bottom-nav">
+                  <button class="nav-btn active">Capture</button>
+                  <button class="nav-btn">Today</button>
+                  <button class="nav-btn">More</button>
+                </nav>
+              </div>
+            </div>
+          </div>
+          <p class="screen-note"><strong>Rule:</strong> error ต้องอยู่ใกล้ last block และมี Retry/Fix ชัดเจน แต่ไม่ควรบล็อกการ capture ครั้งต่อไป</p>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
