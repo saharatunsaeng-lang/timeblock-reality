@@ -590,6 +590,13 @@
         </section>
 
         <div class="section-heading">
+          <h2>Habit Signals</h2>
+        </div>
+        <section class="review-card">
+          <div class="daily-domain-list" id="habitRows"></div>
+        </section>
+
+        <div class="section-heading">
           <h2>Calendar</h2>
           <button id="refreshStatusButton" class="secondary-button" type="button">Check</button>
         </div>
@@ -707,6 +714,7 @@
         metricsGrid: document.querySelector("#metricsGrid"),
         weeklyInsight: document.querySelector("#weeklyInsight"),
         reviewRows: document.querySelector("#reviewRows"),
+        habitRows: document.querySelector("#habitRows"),
         syncPlanButton: document.querySelector("#syncPlanButton"),
         syncReviewButton: document.querySelector("#syncReviewButton"),
         syncSetupPlanButton: document.querySelector("#syncSetupPlanButton"),
@@ -1180,8 +1188,10 @@
 
         if (!rows.length) {
           els.reviewRows.innerHTML = '<div class="empty-state"><div><strong>No weekly data</strong><span>Capture actual blocks or sync your LD8 plan.</span></div></div>';
+          renderHabitSignals(planBlocks, actualBlocks, rows, start, end);
           return;
         }
+
         rows.forEach(({ category, planned, actual, drift }) => {
           const item = document.createElement("div");
           item.className = "review-item";
@@ -1190,6 +1200,7 @@
           item.innerHTML = `<div class="review-item-header"><span>${category.code}</span><span>${formatHours(planned)} / ${formatHours(actual)} · ${formatSignedHours(drift)}</span></div><div class="bar"><span style="width: ${width}%"></span></div>`;
           els.reviewRows.append(item);
         });
+        renderHabitSignals(planBlocks, actualBlocks, rows, start, end);
       }
 
       function buildWeeklyInsight(summary) {
@@ -1212,6 +1223,48 @@
         }
 
         return "<strong>Week is balanced</strong><span>Planned and actual time are close enough. Use the LD8 rows to inspect distribution.</span>";
+      }
+
+      function renderHabitSignals(planBlocks, actualBlocks, rows, start, end) {
+        const elapsedDays = elapsedWeekDays(start, end);
+        const capturedDays = new Set(actualBlocks.map((block) => dateKey(block.start))).size;
+        const topActual = rows
+          .filter((row) => row.actual > 0)
+          .sort((a, b) => b.actual - a.actual)[0];
+        const biggestGap = rows
+          .filter((row) => row.planned > 0 && row.drift < 0)
+          .sort((a, b) => a.drift - b.drift)[0];
+        const signals = [
+          {
+            label: "Capture habit",
+            value: `${capturedDays}/${elapsedDays} days`,
+            detail: capturedDays
+              ? "Actual blocks are being captured often enough to start seeing behavior."
+              : "No actual capture yet this week.",
+          },
+          {
+            label: "Dominant reality",
+            value: topActual ? `${topActual.category.code} ${formatHours(topActual.actual)}` : "-",
+            detail: topActual
+              ? "This is where real time is currently concentrating."
+              : "Capture more actual blocks to identify the dominant domain.",
+          },
+          {
+            label: "Plan pressure",
+            value: biggestGap ? `${biggestGap.category.code} ${formatSignedHours(biggestGap.drift)}` : "Stable",
+            detail: biggestGap
+              ? "This planned domain is furthest behind actual behavior."
+              : "No major under-captured planned domain yet.",
+          },
+        ];
+
+        els.habitRows.innerHTML = "";
+        signals.forEach((signal) => {
+          const row = document.createElement("div");
+          row.className = "daily-domain-row";
+          row.innerHTML = `<div class="review-item-header"><span>${signal.label}</span><span>${signal.value}</span></div><div class="block-time">${signal.detail}</div>`;
+          els.habitRows.append(row);
+        });
       }
 
       function applyCalendarStatus(calendars) {
@@ -1346,6 +1399,13 @@
         return planBlocks
           .filter((block) => new Date(block.start) >= now)
           .sort((a, b) => new Date(a.start) - new Date(b.start))[0] || null;
+      }
+
+      function elapsedWeekDays(start, end) {
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        const capped = today < end ? today : end;
+        return Math.max(1, Math.min(7, Math.ceil((capped - start) / (24 * 60 * 60 * 1000))));
       }
 
       function totalMinutes(blocks, start, end) {
