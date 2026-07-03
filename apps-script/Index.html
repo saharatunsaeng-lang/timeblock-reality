@@ -541,6 +541,7 @@
           <div>
             <span class="label">Now</span>
             <strong id="activeTitle">No active block</strong>
+            <span class="block-time" id="activeMeta"></span>
           </div>
           <button id="endBlockButton" class="end-button" disabled>End</button>
         </section>
@@ -686,10 +687,12 @@
 
       const storageKey = "timeblock-reality-apps-script-v1";
       const state = loadState();
+      let refreshInFlight = false;
       const els = {
         viewEyebrow: document.querySelector("#viewEyebrow"),
         viewTitle: document.querySelector("#viewTitle"),
         activeTitle: document.querySelector("#activeTitle"),
+        activeMeta: document.querySelector("#activeMeta"),
         endBlockButton: document.querySelector("#endBlockButton"),
         quickGrid: document.querySelector("#quickGrid"),
         fixSheet: document.querySelector("#fixSheet"),
@@ -735,6 +738,7 @@
         bindEvents();
         render();
         refreshStatus();
+        setInterval(renderActive, 60 * 1000);
       }
 
       function bindEvents() {
@@ -752,6 +756,7 @@
         els.syncSetupPlanButton.addEventListener("click", syncPlan);
         els.refreshStatusButton.addEventListener("click", refreshStatus);
         els.resetButton.addEventListener("click", resetLocalData);
+        document.addEventListener("visibilitychange", handleVisibilityResume);
       }
 
       function activateTab(tabName) {
@@ -942,6 +947,8 @@
       }
 
       async function refreshStatus() {
+        if (refreshInFlight) return;
+        refreshInFlight = true;
         els.serverStatus.textContent = "Checking...";
         els.serverChip.textContent = "Checking";
         els.serverChip.className = "status-chip warn";
@@ -955,7 +962,16 @@
           els.serverStatus.textContent = readableError(error);
           els.serverChip.textContent = "Issue";
           els.serverChip.className = "status-chip bad";
+        } finally {
+          refreshInFlight = false;
         }
+      }
+
+      function handleVisibilityResume() {
+        if (document.hidden) return;
+        setDefaultTimes();
+        renderActive();
+        refreshStatus();
       }
 
       function applyBootstrapState(result) {
@@ -1004,9 +1020,11 @@
       function renderActive() {
         if (!state.active) {
           els.activeTitle.textContent = "No active block";
+          els.activeMeta.textContent = "";
           els.endBlockButton.disabled = true;
         } else {
           els.activeTitle.textContent = `${categoryShortLabel(state.active.categoryId)} ${formatTime(state.active.start)}`;
+          els.activeMeta.textContent = `Running ${formatHours(minutesBetween(state.active.start, new Date().toISOString()))}`;
           els.endBlockButton.disabled = false;
         }
         [...els.quickGrid.querySelectorAll("button")].forEach((button) => {
