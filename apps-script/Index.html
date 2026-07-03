@@ -1068,7 +1068,11 @@
       }
 
       function saveState() {
-        localStorage.setItem(storageKey, JSON.stringify(state));
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(state));
+        } catch (error) {
+          // Server state is the durable source; local storage is only a cache.
+        }
       }
 
       function categoryShortLabel(id) {
