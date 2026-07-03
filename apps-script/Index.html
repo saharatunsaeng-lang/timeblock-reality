@@ -374,6 +374,18 @@
         padding: 9px;
       }
 
+      .memory-box {
+        width: 100%;
+        min-height: 220px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface-strong);
+        color: var(--ink);
+        padding: 10px;
+        font: 0.78rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        resize: vertical;
+      }
+
       .review-item-header {
         display: flex;
         justify-content: space-between;
@@ -598,6 +610,21 @@
         </section>
 
         <div class="section-heading">
+          <h2>Memory Handoff</h2>
+          <button id="copyMemoryButton" class="secondary-button" type="button">Copy</button>
+        </div>
+        <section class="settings-card">
+          <div class="setting-row">
+            <div>
+              <span class="label">Weekly memory</span>
+              <strong>LD8 plan vs actual summary</strong>
+            </div>
+            <span class="status-chip" id="memoryStatus">Ready</span>
+          </div>
+          <textarea id="memoryText" class="memory-box" readonly hidden></textarea>
+        </section>
+
+        <div class="section-heading">
           <h2>Calendar</h2>
           <button id="refreshStatusButton" class="secondary-button" type="button">Check</button>
         </div>
@@ -718,6 +745,9 @@
         weeklyInsight: document.querySelector("#weeklyInsight"),
         reviewRows: document.querySelector("#reviewRows"),
         habitRows: document.querySelector("#habitRows"),
+        copyMemoryButton: document.querySelector("#copyMemoryButton"),
+        memoryStatus: document.querySelector("#memoryStatus"),
+        memoryText: document.querySelector("#memoryText"),
         syncPlanButton: document.querySelector("#syncPlanButton"),
         syncReviewButton: document.querySelector("#syncReviewButton"),
         syncSetupPlanButton: document.querySelector("#syncSetupPlanButton"),
@@ -754,6 +784,7 @@
         els.syncPlanButton.addEventListener("click", syncPlan);
         els.syncReviewButton.addEventListener("click", syncPlan);
         els.syncSetupPlanButton.addEventListener("click", syncPlan);
+        els.copyMemoryButton.addEventListener("click", copyWeeklyMemory);
         els.refreshStatusButton.addEventListener("click", refreshStatus);
         els.resetButton.addEventListener("click", resetLocalData);
         document.addEventListener("visibilitychange", handleVisibilityResume);
@@ -1283,6 +1314,80 @@
           row.innerHTML = `<div class="review-item-header"><span>${signal.label}</span><span>${signal.value}</span></div><div class="block-time">${signal.detail}</div>`;
           els.habitRows.append(row);
         });
+      }
+
+      async function copyWeeklyMemory() {
+        const text = buildWeeklyMemoryText();
+        els.memoryText.value = text;
+        els.memoryText.hidden = false;
+        let copied = false;
+
+        try {
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+            copied = true;
+          }
+        } catch (error) {
+          copied = false;
+        }
+
+        if (!copied) {
+          copied = fallbackCopyText(els.memoryText);
+        }
+
+        els.memoryStatus.textContent = copied ? "Copied" : "Shown";
+        els.memoryStatus.className = copied ? "status-chip" : "status-chip warn";
+      }
+
+      function buildWeeklyMemoryText() {
+        const start = startOfWeek(new Date());
+        const end = addDays(start, 7);
+        const planBlocks = blocksInRange(state.plan, start, end);
+        const actualBlocks = blocksInRange(state.actual, start, end);
+        const planMinutes = sumBlockMinutes(planBlocks);
+        const actualMinutes = sumBlockMinutes(actualBlocks);
+        const matchedMinutes = matchedPlanActualMinutes(planBlocks, actualBlocks);
+        const match = planMinutes ? Math.round((matchedMinutes / planMinutes) * 100) : 0;
+        const rows = categories
+          .map((category) => {
+            const planned = sumBlockMinutes(planBlocks.filter((block) => block.categoryId === category.id));
+            const actual = sumBlockMinutes(actualBlocks.filter((block) => block.categoryId === category.id));
+            return { category, planned, actual, drift: actual - planned };
+          })
+          .filter((row) => row.planned || row.actual)
+          .sort((a, b) => Math.abs(b.drift) - Math.abs(a.drift));
+        const capturedDays = new Set(actualBlocks.map((block) => dateKey(block.start))).size;
+        const elapsedDays = elapsedWeekDays(start, end);
+        const topActual = rows.filter((row) => row.actual > 0).sort((a, b) => b.actual - a.actual)[0];
+        const biggestGap = rows.filter((row) => row.planned > 0 && row.drift < 0).sort((a, b) => a.drift - b.drift)[0];
+
+        return [
+          "# TimeBlock Reality Weekly Memory",
+          "",
+          `Week: ${dateKey(start)} to ${dateKey(addDays(end, -1))}`,
+          `Plan: ${formatHours(planMinutes)}`,
+          `Actual: ${formatHours(actualMinutes)}`,
+          `Match: ${match}%`,
+          `Drift: ${formatSignedHours(actualMinutes - planMinutes)}`,
+          "",
+          "## Habit Signals",
+          `- Capture habit: ${capturedDays}/${elapsedDays} days`,
+          `- Dominant reality: ${topActual ? `${topActual.category.code} ${formatHours(topActual.actual)}` : "-"}`,
+          `- Plan pressure: ${biggestGap ? `${biggestGap.category.code} ${formatSignedHours(biggestGap.drift)}` : "Stable"}`,
+          "",
+          "## LD8 Drift",
+          ...rows.map((row) => `- ${row.category.code}: plan ${formatHours(row.planned)}, actual ${formatHours(row.actual)}, drift ${formatSignedHours(row.drift)}`),
+        ].join("\n");
+      }
+
+      function fallbackCopyText(textarea) {
+        textarea.select();
+        textarea.setSelectionRange(0, textarea.value.length);
+        try {
+          return document.execCommand("copy");
+        } catch (error) {
+          return false;
+        }
       }
 
       function applyCalendarStatus(calendars) {
