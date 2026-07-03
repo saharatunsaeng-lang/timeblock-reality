@@ -765,6 +765,17 @@
         saveState();
         render();
         activateTab("capture");
+        updateSyncStatus("Starting in GCal...");
+        try {
+          const result = await runServer("startActiveBlock", state.active);
+          if (result.active) state.active = result.active;
+          if (result.calendars) applyCalendarStatus(result.calendars);
+          saveState();
+          updateSyncStatus("Active in GCal");
+        } catch (error) {
+          updateSyncStatus(readableError(error), true);
+        }
+        render();
       }
 
       async function endActiveBlock(shouldRender = true) {
@@ -780,6 +791,7 @@
           note: "",
           start: state.active.start,
           end: end.toISOString(),
+          googleEventId: state.active.googleEventId || "",
         };
         state.actual.push(block);
         state.active = null;
@@ -793,6 +805,7 @@
         try {
           const result = await runServer("createActualBlock", block);
           Object.assign(block, result.block);
+          if ("active" in result) state.active = result.active;
           if (result.calendars) applyCalendarStatus(result.calendars);
           saveState();
           updateSyncStatus("Saved to GCal");
@@ -807,6 +820,7 @@
         try {
           const result = await runServer("updateActualBlock", block);
           Object.assign(block, result.block);
+          if ("active" in result) state.active = result.active;
           if (result.calendars) applyCalendarStatus(result.calendars);
           saveState();
           updateSyncStatus("Fixed in GCal");
@@ -884,7 +898,7 @@
         els.serverChip.className = "status-chip warn";
         try {
           const result = await runServer("getBootstrapState");
-          applyCalendarStatus(result.calendars);
+          applyBootstrapState(result);
           els.serverStatus.textContent = "Ready";
           els.serverChip.textContent = "Ready";
           els.serverChip.className = "status-chip";
@@ -893,6 +907,28 @@
           els.serverChip.textContent = "Issue";
           els.serverChip.className = "status-chip bad";
         }
+      }
+
+      function applyBootstrapState(result) {
+        if (!result) return;
+        if (Array.isArray(result.plan)) state.plan = result.plan;
+        if (Array.isArray(result.actual)) state.actual = mergeBlocks(state.actual, result.actual);
+        if ("active" in result) state.active = result.active;
+        if (result.calendars) applyCalendarStatus(result.calendars);
+        saveState();
+        render();
+      }
+
+      function mergeBlocks(localBlocks, serverBlocks) {
+        const merged = [];
+        const keys = new Set();
+        [...serverBlocks, ...localBlocks].forEach((block) => {
+          const key = block.googleEventId ? `gcal:${block.googleEventId}` : `local:${block.id}`;
+          if (keys.has(key)) return;
+          keys.add(key);
+          merged.push(block);
+        });
+        return merged.sort((a, b) => new Date(a.start) - new Date(b.start));
       }
 
       function buildBlockFromForm(categoryId, startTime, endTime, note) {

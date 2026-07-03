@@ -11,6 +11,12 @@ const LD8_CATEGORIES = [
 
 const ACTUAL_CALENDAR_NAMES = ["Actual-Time Log", "Actual - Time Log"];
 const SOURCE_TAG = "timeblock-reality";
+const STATUS_TAG = "status";
+const LD8_TAG = "ld8";
+const BLOCK_ID_TAG = "blockId";
+const ACTIVE_STATUS = "active";
+const ACTUAL_STATUS = "actual";
+const ACTIVE_PLACEHOLDER_MINUTES = 360;
 
 function doGet() {
   return HtmlService.createHtmlOutputFromFile("Index")
@@ -19,8 +25,12 @@ function doGet() {
 }
 
 function getBootstrapState() {
+  const planResult = syncPlanWeek();
   return {
     calendars: getCalendarStatus(),
+    plan: planResult.blocks,
+    actual: getActualWeekBlocks(),
+    active: getActiveBlock(),
     serverTime: new Date().toISOString(),
     timeZone: Session.getScriptTimeZone(),
   };
@@ -66,36 +76,91 @@ function syncPlanWeek() {
 function createActualBlock(block) {
   const calendar = requireActualCalendar_();
   const normalized = normalizeActualBlock_(block);
+  const existing = findEventById_(calendar, normalized.googleEventId);
+
+  if (existing) {
+    return finalizeActualEvent_(existing, normalized);
+  }
+
   const event = calendar.createEvent(
     `Actual: ${categoryLabel_(normalized.categoryId)}`,
     new Date(normalized.start),
     new Date(normalized.end),
     { description: normalized.note || "Logged from TimeBlock Reality" },
   );
-  tagActualEvent_(event, normalized.categoryId);
+  tagActualEvent_(event, normalized.categoryId, ACTUAL_STATUS, normalized.id);
   return {
     block: serializeActualEvent_(event, normalized),
     calendars: getCalendarStatus(),
+    active: getActiveBlock(),
   };
 }
 
 function updateActualBlock(block) {
   const calendar = requireActualCalendar_();
   const normalized = normalizeActualBlock_(block);
-  let event = normalized.googleEventId ? calendar.getEventById(normalized.googleEventId) : null;
+  let event = findEventById_(calendar, normalized.googleEventId);
 
   if (!event) {
     return createActualBlock(normalized);
   }
 
+  return finalizeActualEvent_(event, normalized);
+}
+
+function startActiveBlock(block) {
+  const calendar = requireActualCalendar_();
+  const normalized = normalizeActiveBlock_(block);
+  const existing = findEventById_(calendar, normalized.googleEventId);
+  const start = new Date(normalized.start);
+  const placeholderEnd = addMinutes_(start, ACTIVE_PLACEHOLDER_MINUTES);
+  const event = existing || calendar.createEvent(
+    `Active: ${categoryLabel_(normalized.categoryId)}`,
+    start,
+    placeholderEnd,
+    { description: "Active block from TimeBlock Reality" },
+  );
+
+  event.setTitle(`Active: ${categoryLabel_(normalized.categoryId)}`);
+  event.setTime(start, placeholderEnd);
+  event.setDescription(normalized.note || "Active block from TimeBlock Reality");
+  tagActualEvent_(event, normalized.categoryId, ACTIVE_STATUS, normalized.id);
+  return {
+    active: serializeActiveEvent_(event, normalized),
+    calendars: getCalendarStatus(),
+  };
+}
+
+function getActiveBlock() {
+  const event = findActiveActualEvent_();
+  return event ? serializeActiveEvent_(event) : null;
+}
+
+function getActualWeekBlocks() {
+  const calendar = getActualCalendar_();
+  if (!calendar) return [];
+
+  const start = startOfWeek_(new Date());
+  const end = addDays_(start, 7);
+  const blocks = calendar.getEvents(start, end)
+    .filter((event) => !event.isAllDayEvent())
+    .filter((event) => event.getTag(STATUS_TAG) !== ACTIVE_STATUS)
+    .map((event) => serializeActualCalendarEvent_(event))
+    .filter(Boolean);
+
+  blocks.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+  return blocks;
+}
+
+function finalizeActualEvent_(event, normalized) {
   event.setTitle(`Actual: ${categoryLabel_(normalized.categoryId)}`);
   event.setTime(new Date(normalized.start), new Date(normalized.end));
   event.setDescription(normalized.note || "Logged from TimeBlock Reality");
-  tagActualEvent_(event, normalized.categoryId);
-
+  tagActualEvent_(event, normalized.categoryId, ACTUAL_STATUS, normalized.id);
   return {
     block: serializeActualEvent_(event, normalized),
     calendars: getCalendarStatus(),
+    active: getActiveBlock(),
   };
 }
 
@@ -144,6 +209,25 @@ function normalizeActualBlock_(block) {
   };
 }
 
+function normalizeActiveBlock_(block) {
+  if (!block || typeof block !== "object") throw new Error("Missing block");
+  const category = LD8_CATEGORIES.find((item) => item.id === block.categoryId);
+  if (!category) throw new Error(`Unknown LD8 category: ${block.categoryId}`);
+
+  const start = new Date(block.start);
+  if (Number.isNaN(start.getTime())) {
+    throw new Error("Invalid block time");
+  }
+
+  return {
+    id: String(block.id || Utilities.getUuid()),
+    categoryId: category.id,
+    note: String(block.note || ""),
+    start: start.toISOString(),
+    googleEventId: block.googleEventId ? String(block.googleEventId) : "",
+  };
+}
+
 function serializePlanEvent_(event, category) {
   return {
     id: `gcal-plan-${category.id}-${event.getId()}`,
@@ -168,9 +252,72 @@ function serializeActualEvent_(event, block) {
   };
 }
 
-function tagActualEvent_(event, categoryId) {
+function serializeActiveEvent_(event, fallback) {
+  const categoryId = event.getTag(LD8_TAG) || fallback?.categoryId || parseCategoryIdFromTitle_(event.getTitle());
+  if (!categoryId) return null;
+  return {
+    id: event.getTag(BLOCK_ID_TAG) || fallback?.id || `gcal-active-${event.getId()}`,
+    categoryId,
+    note: fallback?.note || cleanDescription_(event.getDescription()),
+    start: event.getStartTime().toISOString(),
+    googleEventId: event.getId(),
+    source: SOURCE_TAG,
+    status: ACTIVE_STATUS,
+  };
+}
+
+function serializeActualCalendarEvent_(event) {
+  const categoryId = event.getTag(LD8_TAG) || parseCategoryIdFromTitle_(event.getTitle());
+  if (!categoryId) return null;
+  return {
+    id: event.getTag(BLOCK_ID_TAG) || `gcal-actual-${event.getId()}`,
+    categoryId,
+    note: cleanDescription_(event.getDescription()),
+    start: event.getStartTime().toISOString(),
+    end: event.getEndTime().toISOString(),
+    googleEventId: event.getId(),
+    source: SOURCE_TAG,
+  };
+}
+
+function tagActualEvent_(event, categoryId, status, blockId) {
   event.setTag("source", SOURCE_TAG);
-  event.setTag("ld8", categoryId);
+  event.setTag(LD8_TAG, categoryId);
+  event.setTag(STATUS_TAG, status);
+  event.setTag(BLOCK_ID_TAG, blockId);
+}
+
+function findEventById_(calendar, eventId) {
+  if (!eventId) return null;
+  try {
+    return calendar.getEventById(eventId);
+  } catch (error) {
+    return null;
+  }
+}
+
+function findActiveActualEvent_() {
+  const calendar = getActualCalendar_();
+  if (!calendar) return null;
+
+  const start = addDays_(new Date(), -2);
+  const end = addDays_(new Date(), 7);
+  const activeEvents = calendar.getEvents(start, end)
+    .filter((event) => event.getTag(STATUS_TAG) === ACTIVE_STATUS)
+    .sort((a, b) => b.getStartTime().getTime() - a.getStartTime().getTime());
+
+  return activeEvents.length ? activeEvents[0] : null;
+}
+
+function parseCategoryIdFromTitle_(title) {
+  const text = String(title || "");
+  const category = LD8_CATEGORIES.find((item) => text.indexOf(item.code) !== -1);
+  return category ? category.id : "";
+}
+
+function cleanDescription_(description) {
+  const text = String(description || "");
+  return text === "Logged from TimeBlock Reality" || text === "Active block from TimeBlock Reality" ? "" : text;
 }
 
 function categoryLabel_(id) {
@@ -190,5 +337,11 @@ function startOfWeek_(date) {
 function addDays_(date, days) {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
+  return next;
+}
+
+function addMinutes_(date, minutes) {
+  const next = new Date(date);
+  next.setMinutes(next.getMinutes() + minutes);
   return next;
 }
