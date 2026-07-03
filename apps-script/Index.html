@@ -327,6 +327,12 @@
         margin-bottom: 10px;
       }
 
+      .daily-summary {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+
       .metric-card {
         min-height: 66px;
         align-items: flex-start;
@@ -338,9 +344,41 @@
         font-size: 1.28rem;
       }
 
+      .insight-card {
+        border: 1px solid var(--line);
+        border-left: 4px solid var(--amber);
+        border-radius: 8px;
+        background: var(--amber-soft);
+        padding: 10px;
+      }
+
+      .insight-card strong,
+      .insight-card span {
+        display: block;
+      }
+
+      .insight-card span {
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 0.82rem;
+        font-weight: 760;
+      }
+
       .review-item {
         display: grid;
         gap: 6px;
+      }
+
+      .daily-domain-list {
+        display: grid;
+        gap: 7px;
+      }
+
+      .daily-domain-row {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface-strong);
+        padding: 9px;
       }
 
       .review-item-header {
@@ -531,8 +569,16 @@
 
       <section class="panel" id="todayPanel">
         <div class="section-heading">
-          <h2>Timeline</h2>
+          <h2>Daily Review</h2>
           <button id="syncPlanButton" class="secondary-button">Sync Plan</button>
+        </div>
+        <section class="daily-summary" aria-label="Daily review">
+          <div class="metrics-grid" id="todaySummaryGrid"></div>
+          <div class="insight-card" id="todayInsight"></div>
+          <div class="daily-domain-list" id="todayDomainRows"></div>
+        </section>
+        <div class="section-heading">
+          <h2>Timeline</h2>
         </div>
         <section class="timeline-card">
           <div class="timeline-list" id="todayList"></div>
@@ -662,6 +708,9 @@
         manualEnd: document.querySelector("#manualEnd"),
         manualNote: document.querySelector("#manualNote"),
         todayLabel: document.querySelector("#todayLabel"),
+        todaySummaryGrid: document.querySelector("#todaySummaryGrid"),
+        todayInsight: document.querySelector("#todayInsight"),
+        todayDomainRows: document.querySelector("#todayDomainRows"),
         todayList: document.querySelector("#todayList"),
         metricsGrid: document.querySelector("#metricsGrid"),
         reviewRows: document.querySelector("#reviewRows"),
@@ -988,9 +1037,14 @@
       }
 
       function renderToday() {
-        const items = [...state.plan, ...state.actual]
-          .filter((block) => dateKey(block.start) === todayDateKey())
+        const day = todayDateKey();
+        const planBlocks = state.plan.filter((block) => dateKey(block.start) === day);
+        const actualBlocks = state.actual.filter((block) => dateKey(block.start) === day);
+        const items = [...planBlocks, ...actualBlocks]
           .sort((a, b) => new Date(a.start) - new Date(b.start));
+
+        renderDailySummary(planBlocks, actualBlocks);
+
         els.todayList.innerHTML = "";
         if (!items.length) {
           const empty = document.createElement("div");
@@ -1006,6 +1060,89 @@
           const blockClass = type === "Plan" ? "time-block plan" : "time-block";
           row.innerHTML = `<time>${formatTime(block.start)}</time><div class="${blockClass}"><strong class="block-title">${type}: ${categoryShortLabel(block.categoryId)}</strong><span class="block-time">${formatTime(block.start)}-${formatTime(block.end)} · ${minutesBetween(block.start, block.end)}m</span></div>`;
           els.todayList.append(row);
+        });
+      }
+
+      function renderDailySummary(planBlocks, actualBlocks) {
+        const planMinutes = sumBlockMinutes(planBlocks);
+        const actualMinutes = sumBlockMinutes(actualBlocks);
+        const matchedMinutes = matchedPlanActualMinutes(planBlocks, actualBlocks);
+        const missedMinutes = Math.max(0, planMinutes - matchedMinutes);
+        const unplannedMinutes = Math.max(0, actualMinutes - matchedMinutes);
+        const activeMinutes = state.active && dateKey(state.active.start) === todayDateKey()
+          ? minutesBetween(state.active.start, new Date().toISOString())
+          : 0;
+        const nextPlan = getNextPlanBlock(planBlocks);
+        const match = planMinutes ? Math.round((matchedMinutes / planMinutes) * 100) : 0;
+
+        els.todaySummaryGrid.innerHTML = "";
+        [
+          ["Plan", formatHours(planMinutes)],
+          ["Actual", formatHours(actualMinutes)],
+          ["Match", `${match}%`],
+          ["Drift", formatSignedHours(actualMinutes - planMinutes)],
+        ].forEach(([label, value]) => {
+          const card = document.createElement("div");
+          card.className = "metric-card";
+          card.innerHTML = `<span class="label">${label}</span><strong>${value}</strong>`;
+          els.todaySummaryGrid.append(card);
+        });
+
+        els.todayInsight.innerHTML = buildDailyInsight({
+          activeMinutes,
+          actualMinutes,
+          missedMinutes,
+          nextPlan,
+          planMinutes,
+          unplannedMinutes,
+        });
+        renderDailyDomainRows(planBlocks, actualBlocks);
+      }
+
+      function buildDailyInsight(summary) {
+        if (state.active && summary.activeMinutes) {
+          return `<strong>Now: ${categoryShortLabel(state.active.categoryId)} ${formatTime(state.active.start)}</strong><span>Running ${formatHours(summary.activeMinutes)} so far. End it when the block is actually done.</span>`;
+        }
+        if (!summary.planMinutes && !summary.actualMinutes) {
+          return "<strong>No signal yet</strong><span>Sync your LD8 plan or capture the first actual block.</span>";
+        }
+        if (summary.actualMinutes && !summary.planMinutes) {
+          return `<strong>Actual without plan</strong><span>You captured ${formatHours(summary.actualMinutes)} today without a planned baseline.</span>`;
+        }
+        if (summary.missedMinutes > summary.unplannedMinutes && summary.missedMinutes >= 30) {
+          return `<strong>Plan is ahead</strong><span>${formatHours(summary.missedMinutes)} planned time has not appeared in actual capture yet.</span>`;
+        }
+        if (summary.unplannedMinutes >= 30) {
+          return `<strong>Reality drift</strong><span>${formatHours(summary.unplannedMinutes)} happened outside the matched LD8 plan.</span>`;
+        }
+        if (summary.nextPlan) {
+          return `<strong>Next plan: ${categoryShortLabel(summary.nextPlan.categoryId)} ${formatTime(summary.nextPlan.start)}</strong><span>${escapeHtml(summary.nextPlan.note || "Use Capture when the real block starts.")}</span>`;
+        }
+        return "<strong>Day is aligned enough</strong><span>Plan and actual are close. Keep capturing the real blocks.</span>";
+      }
+
+      function renderDailyDomainRows(planBlocks, actualBlocks) {
+        els.todayDomainRows.innerHTML = "";
+        const rows = categories
+          .map((category) => {
+            const planned = sumBlockMinutes(planBlocks.filter((block) => block.categoryId === category.id));
+            const actual = sumBlockMinutes(actualBlocks.filter((block) => block.categoryId === category.id));
+            return { category, planned, actual };
+          })
+          .filter((row) => row.planned || row.actual);
+
+        if (!rows.length) {
+          els.todayDomainRows.innerHTML = '<div class="empty-state"><div><strong>No LD8 rows yet</strong><span>Today summary will fill in after plan sync or capture.</span></div></div>';
+          return;
+        }
+
+        rows.forEach(({ category, planned, actual }) => {
+          const row = document.createElement("div");
+          row.className = "daily-domain-row";
+          const max = Math.max(planned, actual, 1);
+          const width = Math.max(6, Math.round((actual / max) * 100));
+          row.innerHTML = `<div class="review-item-header"><span>${category.code}</span><span>${formatHours(planned)} / ${formatHours(actual)} · ${formatSignedHours(actual - planned)}</span></div><div class="bar"><span style="width: ${width}%"></span></div>`;
+          els.todayDomainRows.append(row);
         });
       }
 
@@ -1089,6 +1226,15 @@
         return error && error.message ? error.message : "Server error";
       }
 
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
       function loadState() {
         try {
           const saved = JSON.parse(localStorage.getItem(storageKey)) || {};
@@ -1144,6 +1290,32 @@
         return Math.max(0, Math.round((new Date(end) - new Date(start)) / 60000));
       }
 
+      function sumBlockMinutes(blocks) {
+        return blocks.reduce((sum, block) => sum + minutesBetween(block.start, block.end), 0);
+      }
+
+      function matchedPlanActualMinutes(planBlocks, actualBlocks) {
+        return actualBlocks.reduce((sum, actual) => {
+          const matched = planBlocks
+            .filter((plan) => plan.categoryId === actual.categoryId)
+            .reduce((innerSum, plan) => innerSum + overlapMinutes(actual, plan), 0);
+          return sum + Math.min(minutesBetween(actual.start, actual.end), matched);
+        }, 0);
+      }
+
+      function overlapMinutes(first, second) {
+        const start = Math.max(new Date(first.start).getTime(), new Date(second.start).getTime());
+        const end = Math.min(new Date(first.end).getTime(), new Date(second.end).getTime());
+        return Math.max(0, Math.round((end - start) / 60000));
+      }
+
+      function getNextPlanBlock(planBlocks) {
+        const now = new Date();
+        return planBlocks
+          .filter((block) => new Date(block.start) >= now)
+          .sort((a, b) => new Date(a.start) - new Date(b.start))[0] || null;
+      }
+
       function totalMinutes(blocks, start, end) {
         return blocks
           .filter((block) => new Date(block.start) >= start && new Date(block.start) < end)
@@ -1153,12 +1325,13 @@
       function formatHours(minutes) {
         const hours = Math.floor(minutes / 60);
         const mins = minutes % 60;
+        if (!hours) return `${mins}m`;
         return mins ? `${hours}h ${mins}m` : `${hours}h`;
       }
 
       function formatSignedHours(minutes) {
-        const sign = minutes > 0 ? "+" : "";
-        return `${sign}${formatHours(minutes)}`;
+        const sign = minutes > 0 ? "+" : minutes < 0 ? "-" : "";
+        return `${sign}${formatHours(Math.abs(minutes))}`;
       }
 
       function roundDate(date, stepMinutes) {
