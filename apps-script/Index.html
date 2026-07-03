@@ -584,6 +584,7 @@
           <button id="syncReviewButton" class="secondary-button">Sync Plan</button>
         </div>
         <div class="metrics-grid" id="metricsGrid"></div>
+        <div class="insight-card" id="weeklyInsight"></div>
         <section class="review-card">
           <div class="review-list" id="reviewRows"></div>
         </section>
@@ -704,6 +705,7 @@
         todayDomainRows: document.querySelector("#todayDomainRows"),
         todayList: document.querySelector("#todayList"),
         metricsGrid: document.querySelector("#metricsGrid"),
+        weeklyInsight: document.querySelector("#weeklyInsight"),
         reviewRows: document.querySelector("#reviewRows"),
         syncPlanButton: document.querySelector("#syncPlanButton"),
         syncReviewButton: document.querySelector("#syncReviewButton"),
@@ -1139,41 +1141,77 @@
       function renderReview() {
         const start = startOfWeek(new Date());
         const end = addDays(start, 7);
-        const planMinutes = totalMinutes(state.plan, start, end);
-        const actualMinutes = totalMinutes(state.actual, start, end);
-        const adherence = planMinutes ? Math.round((Math.min(planMinutes, actualMinutes) / planMinutes) * 100) : 0;
+        const planBlocks = blocksInRange(state.plan, start, end);
+        const actualBlocks = blocksInRange(state.actual, start, end);
+        const planMinutes = sumBlockMinutes(planBlocks);
+        const actualMinutes = sumBlockMinutes(actualBlocks);
+        const matchedMinutes = matchedPlanActualMinutes(planBlocks, actualBlocks);
+        const adherence = planMinutes ? Math.round((matchedMinutes / planMinutes) * 100) : 0;
+        const driftMinutes = actualMinutes - planMinutes;
         els.metricsGrid.innerHTML = "";
         [
           ["Plan", formatHours(planMinutes)],
           ["Actual", formatHours(actualMinutes)],
           ["Match", `${adherence}%`],
-          ["Last", getLastActualBlock() ? categoryShortLabel(getLastActualBlock().categoryId) : "-"],
+          ["Drift", formatSignedHours(driftMinutes)],
         ].forEach(([label, value]) => {
           const card = document.createElement("div");
           card.className = "metric-card";
           card.innerHTML = `<span class="label">${label}</span><strong>${value}</strong>`;
           els.metricsGrid.append(card);
         });
+
         els.reviewRows.innerHTML = "";
         const rows = categories
           .map((category) => {
-            const planned = totalMinutes(state.plan.filter((block) => block.categoryId === category.id), start, end);
-            const actual = totalMinutes(state.actual.filter((block) => block.categoryId === category.id), start, end);
-            return { category, planned, actual };
+            const planned = sumBlockMinutes(planBlocks.filter((block) => block.categoryId === category.id));
+            const actual = sumBlockMinutes(actualBlocks.filter((block) => block.categoryId === category.id));
+            return { category, planned, actual, drift: actual - planned };
           })
-          .filter((row) => row.planned || row.actual);
+          .filter((row) => row.planned || row.actual)
+          .sort((a, b) => Math.abs(b.drift) - Math.abs(a.drift));
+
+        els.weeklyInsight.innerHTML = buildWeeklyInsight({
+          actualMinutes,
+          driftMinutes,
+          planMinutes,
+          rows,
+        });
+
         if (!rows.length) {
           els.reviewRows.innerHTML = '<div class="empty-state"><div><strong>No weekly data</strong><span>Capture actual blocks or sync your LD8 plan.</span></div></div>';
           return;
         }
-        rows.forEach(({ category, planned, actual }) => {
+        rows.forEach(({ category, planned, actual, drift }) => {
           const item = document.createElement("div");
           item.className = "review-item";
           const max = Math.max(planned, actual, 1);
           const width = Math.max(6, Math.round((actual / max) * 100));
-          item.innerHTML = `<div class="review-item-header"><span>${category.code}</span><span>${formatHours(planned)} / ${formatHours(actual)} · ${formatSignedHours(actual - planned)}</span></div><div class="bar"><span style="width: ${width}%"></span></div>`;
+          item.innerHTML = `<div class="review-item-header"><span>${category.code}</span><span>${formatHours(planned)} / ${formatHours(actual)} · ${formatSignedHours(drift)}</span></div><div class="bar"><span style="width: ${width}%"></span></div>`;
           els.reviewRows.append(item);
         });
+      }
+
+      function buildWeeklyInsight(summary) {
+        if (!summary.planMinutes && !summary.actualMinutes) {
+          return "<strong>No weekly signal yet</strong><span>Sync your LD8 plan or capture actual blocks to see weekly drift.</span>";
+        }
+
+        const biggest = summary.rows[0];
+        if (biggest && Math.abs(biggest.drift) >= 60) {
+          const direction = biggest.drift > 0 ? "more actual time than planned" : "less actual time than planned";
+          return `<strong>Largest weekly drift: ${biggest.category.code}</strong><span>${formatSignedHours(biggest.drift)} ${direction}. Review whether this is intentional.</span>`;
+        }
+
+        if (summary.driftMinutes > 0) {
+          return `<strong>Actual is above plan</strong><span>${formatSignedHours(summary.driftMinutes)} more captured time than planned this week.</span>`;
+        }
+
+        if (summary.driftMinutes < 0) {
+          return `<strong>Plan is ahead of reality</strong><span>${formatSignedHours(summary.driftMinutes)} against plan this week. Check missed or uncaptured blocks.</span>`;
+        }
+
+        return "<strong>Week is balanced</strong><span>Planned and actual time are close enough. Use the LD8 rows to inspect distribution.</span>";
       }
 
       function applyCalendarStatus(calendars) {
@@ -1282,6 +1320,10 @@
 
       function sumBlockMinutes(blocks) {
         return blocks.reduce((sum, block) => sum + minutesBetween(block.start, block.end), 0);
+      }
+
+      function blocksInRange(blocks, start, end) {
+        return blocks.filter((block) => new Date(block.start) >= start && new Date(block.start) < end);
       }
 
       function matchedPlanActualMinutes(planBlocks, actualBlocks) {
