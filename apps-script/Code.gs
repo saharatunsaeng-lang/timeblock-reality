@@ -18,22 +18,31 @@ const ACTIVE_STATUS = "active";
 const ACTUAL_STATUS = "actual";
 const ACTIVE_PLACEHOLDER_MINUTES = 360;
 
-function doGet() {
+function doGet(event) {
+  if (event?.parameter?.mode === "audit") {
+    const payload = JSON.stringify(inspectActualRange_(event.parameter), null, 2);
+    return HtmlService
+      .createHtmlOutput(`<pre>${escapeHtml_(payload)}</pre>`)
+      .setTitle("TimeBlock Audit");
+  }
+
   return HtmlService.createHtmlOutputFromFile("Index")
     .setTitle("TimeBlock Reality")
     .addMetaTag("viewport", "width=device-width, initial-scale=1, viewport-fit=cover");
 }
 
-function getBootstrapState() {
-  const planResult = syncPlanWeek();
-  return {
+function getBootstrapState(includePlan) {
+  const result = {
     calendars: getCalendarStatus(),
-    plan: planResult.blocks,
     actual: getActualWeekBlocks(),
     active: getActiveBlock(),
     serverTime: new Date().toISOString(),
     timeZone: Session.getScriptTimeZone(),
   };
+  if (includePlan) {
+    result.plan = syncPlanWeek().blocks;
+  }
+  return result;
 }
 
 function getCalendarStatus() {
@@ -150,6 +159,53 @@ function getActualWeekBlocks() {
 
   blocks.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
   return blocks;
+}
+
+function inspectActualRange_(params) {
+  const calendar = requireActualCalendar_();
+  const range = inspectRangeFromParams_(params);
+  const start = range.start;
+  const end = range.end;
+  const categoryId = String(params.categoryId || "");
+
+  const events = calendar.getEvents(start, end)
+    .filter((event) => !event.isAllDayEvent())
+    .map((event) => serializeActualCalendarEvent_(event))
+    .filter(Boolean)
+    .filter((block) => !categoryId || block.categoryId === categoryId)
+    .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+
+  return {
+    calendar: calendar.getName(),
+    start: start.toISOString(),
+    end: end.toISOString(),
+    categoryId,
+    count: events.length,
+    events,
+  };
+}
+
+function inspectRangeFromParams_(params) {
+  if (params.day) {
+    const dayMatch = String(params.day).match(/^(\d{4})-?(\d{2})-?(\d{2})$/);
+    if (!dayMatch) throw new Error("Invalid inspect day");
+    const startMinutes = Number(params.fromMin || 0);
+    const endMinutes = Number(params.toMin || 24 * 60);
+    if (Number.isNaN(startMinutes) || Number.isNaN(endMinutes) || endMinutes <= startMinutes) {
+      throw new Error("Invalid inspect minutes");
+    }
+
+    const start = new Date(Number(dayMatch[1]), Number(dayMatch[2]) - 1, Number(dayMatch[3]), 0, startMinutes, 0, 0);
+    const end = new Date(Number(dayMatch[1]), Number(dayMatch[2]) - 1, Number(dayMatch[3]), 0, endMinutes, 0, 0);
+    return { start, end };
+  }
+
+  const start = new Date(params.start);
+  const end = new Date(params.end);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    throw new Error("Invalid inspect range");
+  }
+  return { start, end };
 }
 
 function finalizeActualEvent_(event, normalized) {
@@ -318,6 +374,14 @@ function parseCategoryIdFromTitle_(title) {
 function cleanDescription_(description) {
   const text = String(description || "");
   return text === "Logged from TimeBlock Reality" || text === "Active block from TimeBlock Reality" ? "" : text;
+}
+
+function escapeHtml_(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function categoryLabel_(id) {

@@ -715,6 +715,8 @@
       const storageKey = "timeblock-reality-apps-script-v1";
       const state = loadState();
       let refreshInFlight = false;
+      let bootstrapReady = false;
+      let operationInFlight = false;
       const els = {
         viewEyebrow: document.querySelector("#viewEyebrow"),
         viewTitle: document.querySelector("#viewTitle"),
@@ -841,17 +843,19 @@
       }
 
       async function startQuickBlock(categoryId) {
-        if (state.active) await endActiveBlock(false);
-        state.active = {
-          id: crypto.randomUUID(),
-          categoryId,
-          start: new Date().toISOString(),
-        };
-        saveState();
-        render();
+        if (isCaptureLocked()) return;
+        operationInFlight = true;
         activateTab("capture");
-        updateSyncStatus("Starting in GCal...");
+        updateSyncStatus(state.active ? "Switching block..." : "Starting in GCal...");
+        render();
         try {
+          if (state.active) await finishActiveBlock(false);
+          state.active = {
+            id: crypto.randomUUID(),
+            categoryId,
+            start: new Date().toISOString(),
+          };
+          saveState();
           const result = await runServer("startActiveBlock", state.active);
           if (result.active) state.active = result.active;
           if (result.calendars) applyCalendarStatus(result.calendars);
@@ -859,11 +863,25 @@
           updateSyncStatus("Active in GCal");
         } catch (error) {
           updateSyncStatus(readableError(error), true);
+        } finally {
+          operationInFlight = false;
+          render();
         }
-        render();
       }
 
       async function endActiveBlock(shouldRender = true) {
+        if (isCaptureLocked()) return;
+        operationInFlight = true;
+        render();
+        try {
+          await finishActiveBlock(shouldRender);
+        } finally {
+          operationInFlight = false;
+          render();
+        }
+      }
+
+      async function finishActiveBlock(shouldRender = true) {
         if (!state.active) return;
         const end = new Date();
         const start = new Date(state.active.start);
@@ -901,6 +919,9 @@
       }
 
       async function updateActualBlock(block) {
+        if (isCaptureLocked()) return;
+        operationInFlight = true;
+        render();
         updateSyncStatus("Fixing in GCal...");
         try {
           const result = await runServer("updateActualBlock", block);
@@ -911,17 +932,28 @@
           updateSyncStatus("Fixed in GCal");
         } catch (error) {
           updateSyncStatus(readableError(error), true);
+        } finally {
+          operationInFlight = false;
         }
         render();
       }
 
       async function retrySyncLastBlock() {
+        if (isCaptureLocked()) return;
         const block = getLastActualBlock();
         if (!block) return;
-        await syncActualBlock(block);
+        operationInFlight = true;
+        render();
+        try {
+          await syncActualBlock(block);
+        } finally {
+          operationInFlight = false;
+          render();
+        }
       }
 
       function openFixSheet() {
+        if (isCaptureLocked()) return;
         const block = getLastActualBlock();
         if (!block) return;
         populateFixLastForm(block);
@@ -958,6 +990,9 @@
       }
 
       async function syncPlan() {
+        if (isCaptureLocked()) return;
+        operationInFlight = true;
+        render();
         els.serverStatus.textContent = "Syncing plan...";
         els.serverChip.textContent = "Syncing";
         els.serverChip.className = "status-chip warn";
@@ -974,27 +1009,34 @@
           els.serverStatus.textContent = readableError(error);
           els.serverChip.textContent = "Issue";
           els.serverChip.className = "status-chip bad";
+        } finally {
+          operationInFlight = false;
+          render();
         }
       }
 
       async function refreshStatus() {
-        if (refreshInFlight) return;
+        if (refreshInFlight || operationInFlight) return;
         refreshInFlight = true;
         els.serverStatus.textContent = "Checking...";
         els.serverChip.textContent = "Checking";
         els.serverChip.className = "status-chip warn";
+        render();
         try {
           const result = await runServer("getBootstrapState");
           applyBootstrapState(result);
+          bootstrapReady = true;
           els.serverStatus.textContent = "Ready";
           els.serverChip.textContent = "Ready";
           els.serverChip.className = "status-chip";
         } catch (error) {
+          bootstrapReady = false;
           els.serverStatus.textContent = readableError(error);
           els.serverChip.textContent = "Issue";
           els.serverChip.className = "status-chip bad";
         } finally {
           refreshInFlight = false;
+          render();
         }
       }
 
@@ -1046,26 +1088,32 @@
         renderLastBlock();
         renderToday();
         renderReview();
+        renderControlLocks();
       }
 
       function renderActive() {
+        const locked = isCaptureLocked();
         if (!state.active) {
-          els.activeTitle.textContent = "No active block";
-          els.activeMeta.textContent = "";
+          els.activeTitle.textContent = bootstrapReady ? "No active block" : "Syncing with GCal";
+          els.activeMeta.textContent = bootstrapReady ? "" : "Capture will unlock when current state is ready.";
           els.endBlockButton.disabled = true;
         } else {
           els.activeTitle.textContent = `${categoryShortLabel(state.active.categoryId)} ${formatTime(state.active.start)}`;
-          els.activeMeta.textContent = `Running ${formatHours(minutesBetween(state.active.start, new Date().toISOString()))}`;
-          els.endBlockButton.disabled = false;
+          els.activeMeta.textContent = locked
+            ? "Syncing..."
+            : `Running ${formatHours(minutesBetween(state.active.start, new Date().toISOString()))}`;
+          els.endBlockButton.disabled = locked;
         }
         [...els.quickGrid.querySelectorAll("button")].forEach((button) => {
           const category = categories.find((item) => button.title === item.name);
           button.classList.toggle("active", state.active?.categoryId === category?.id);
+          button.disabled = locked;
         });
       }
 
       function renderLastBlock() {
         const block = getLastActualBlock();
+        const locked = isCaptureLocked();
         els.lastBlockCard.classList.remove("has-error");
         if (!block) {
           els.lastBlockTitle.textContent = "No actual yet";
@@ -1081,8 +1129,8 @@
         els.lastSyncStatus.textContent = isSynced ? "Saved to GCal" : "Not saved";
         els.lastSyncStatus.className = `status-chip ${isSynced ? "" : "bad"}`;
         els.lastBlockCard.classList.toggle("has-error", !isSynced);
-        els.fixLastButton.disabled = false;
-        els.syncLastButton.disabled = isSynced;
+        els.fixLastButton.disabled = locked;
+        els.syncLastButton.disabled = locked || isSynced;
       }
 
       function renderToday() {
@@ -1403,6 +1451,19 @@
         els.serverStatus.textContent = status;
         els.serverChip.textContent = isError ? "Issue" : "Ready";
         els.serverChip.className = `status-chip ${isError ? "bad" : ""}`;
+      }
+
+      function isCaptureLocked() {
+        return !bootstrapReady || refreshInFlight || operationInFlight;
+      }
+
+      function renderControlLocks() {
+        const locked = isCaptureLocked();
+        els.fixLastButton.disabled = locked || !getLastActualBlock();
+        els.syncPlanButton.disabled = locked;
+        els.syncReviewButton.disabled = locked;
+        els.syncSetupPlanButton.disabled = locked;
+        els.refreshStatusButton.disabled = operationInFlight;
       }
 
       function resetLocalData() {
