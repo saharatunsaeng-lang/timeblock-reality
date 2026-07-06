@@ -716,8 +716,11 @@
       const serverTimeoutMs = 25000;
       const state = loadState();
       let refreshInFlight = false;
-      let bootstrapReady = false;
+      let bootstrapReady = hasUsableLocalState(state);
       let operationInFlight = false;
+      let localActionInFlight = false;
+      let pendingSyncCount = 0;
+      let syncQueue = Promise.resolve();
       const els = {
         viewEyebrow: document.querySelector("#viewEyebrow"),
         viewTitle: document.querySelector("#viewTitle"),
@@ -843,47 +846,45 @@
         els.manualEnd.value = toTimeInput(addMinutes(roundDate(now, 15), 30));
       }
 
-      async function startQuickBlock(categoryId) {
+      function startQuickBlock(categoryId) {
         if (isCaptureLocked()) return;
-        operationInFlight = true;
+        localActionInFlight = true;
         activateTab("capture");
-        updateSyncStatus(state.active ? "Switching block..." : "Starting in GCal...");
-        render();
         try {
-          if (state.active) await finishActiveBlock(false);
+          const endedBlock = finishActiveBlockLocally();
           state.active = {
             id: crypto.randomUUID(),
             categoryId,
             start: new Date().toISOString(),
           };
           saveState();
-          const result = await runServer("startActiveBlock", state.active);
-          if (result.active) state.active = result.active;
-          if (result.calendars) applyCalendarStatus(result.calendars);
-          saveState();
-          updateSyncStatus("Active in GCal");
+          render();
+          if (endedBlock) queueActualSync(endedBlock);
+          queueActiveSync(state.active);
         } catch (error) {
           updateSyncStatus(readableError(error), true);
         } finally {
-          operationInFlight = false;
+          localActionInFlight = false;
           render();
         }
       }
 
-      async function endActiveBlock(shouldRender = true) {
+      function endActiveBlock(shouldRender = true) {
         if (isCaptureLocked()) return;
-        operationInFlight = true;
-        render();
+        localActionInFlight = true;
         try {
-          await finishActiveBlock(shouldRender);
+          const block = finishActiveBlockLocally();
+          if (!block) return;
+          queueActualSync(block);
+          if (shouldRender) render();
         } finally {
-          operationInFlight = false;
+          localActionInFlight = false;
           render();
         }
       }
 
-      async function finishActiveBlock(shouldRender = true) {
-        if (!state.active) return;
+      function finishActiveBlockLocally() {
+        if (!state.active) return null;
         const end = new Date();
         const start = new Date(state.active.start);
         if (end.getTime() - start.getTime() < 60 * 1000) {
@@ -900,8 +901,43 @@
         state.actual.push(block);
         state.active = null;
         saveState();
-        await syncActualBlock(block);
-        if (shouldRender) render();
+        return block;
+      }
+
+      function queueActualSync(block) {
+        enqueueSync("Saving to GCal...", () => syncActualBlock(block));
+      }
+
+      function queueActiveSync(activeBlock) {
+        enqueueSync("Starting in GCal...", async () => {
+          try {
+            const result = await runServer("startActiveBlock", activeBlock);
+            if (result.active && state.active?.id === result.active.id) state.active = result.active;
+            if (result.calendars) applyCalendarStatus(result.calendars);
+            saveState();
+          } catch (error) {
+            updateSyncStatus(readableError(error), true);
+          }
+        });
+      }
+
+      function enqueueSync(status, task) {
+        pendingSyncCount += 1;
+        updateSyncStatus(status);
+        render();
+        syncQueue = syncQueue
+          .catch(() => {})
+          .then(task)
+          .finally(() => {
+            pendingSyncCount = Math.max(0, pendingSyncCount - 1);
+            if (!pendingSyncCount) {
+              els.serverStatus.textContent = "Ready";
+              els.serverChip.textContent = "Ready";
+              els.serverChip.className = "status-chip";
+            }
+            render();
+          });
+        return syncQueue;
       }
 
       async function syncActualBlock(block) {
@@ -909,7 +945,6 @@
         try {
           const result = await runServer("createActualBlock", block);
           Object.assign(block, result.block);
-          if ("active" in result) state.active = result.active;
           if (result.calendars) applyCalendarStatus(result.calendars);
           saveState();
           updateSyncStatus("Saved to GCal");
@@ -920,7 +955,7 @@
       }
 
       async function updateActualBlock(block) {
-        if (isCaptureLocked()) return;
+        if (operationInFlight) return;
         operationInFlight = true;
         render();
         updateSyncStatus("Fixing in GCal...");
@@ -940,21 +975,14 @@
       }
 
       async function retrySyncLastBlock() {
-        if (isCaptureLocked()) return;
+        if (operationInFlight) return;
         const block = getLastActualBlock();
         if (!block) return;
-        operationInFlight = true;
-        render();
-        try {
-          await syncActualBlock(block);
-        } finally {
-          operationInFlight = false;
-          render();
-        }
+        queueActualSync(block);
       }
 
       function openFixSheet() {
-        if (isCaptureLocked()) return;
+        if (operationInFlight) return;
         const block = getLastActualBlock();
         if (!block) return;
         populateFixLastForm(block);
@@ -991,7 +1019,7 @@
       }
 
       async function syncPlan() {
-        if (isCaptureLocked()) return;
+        if (operationInFlight) return;
         operationInFlight = true;
         render();
         els.serverStatus.textContent = "Syncing plan...";
@@ -1017,7 +1045,7 @@
       }
 
       async function refreshStatus() {
-        if (refreshInFlight || operationInFlight) return;
+        if (refreshInFlight) return;
         refreshInFlight = true;
         els.serverStatus.textContent = "Checking...";
         els.serverChip.textContent = "Checking";
@@ -1031,7 +1059,7 @@
           els.serverChip.textContent = "Ready";
           els.serverChip.className = "status-chip";
         } catch (error) {
-          bootstrapReady = false;
+          bootstrapReady = hasUsableLocalState(state);
           els.serverStatus.textContent = readableError(error);
           els.serverChip.textContent = "Issue";
           els.serverChip.className = "status-chip bad";
@@ -1052,7 +1080,7 @@
         if (!result) return;
         if (Array.isArray(result.plan)) state.plan = result.plan;
         if (Array.isArray(result.actual)) state.actual = mergeBlocks(state.actual, result.actual);
-        if ("active" in result) state.active = result.active;
+        if ("active" in result && !pendingSyncCount && !localActionInFlight) state.active = result.active;
         if (result.calendars) applyCalendarStatus(result.calendars);
         saveState();
         render();
@@ -1099,13 +1127,12 @@
         const locked = isCaptureLocked();
         if (!state.active) {
           els.activeTitle.textContent = bootstrapReady ? "No active block" : "Syncing with GCal";
-          els.activeMeta.textContent = bootstrapReady ? "" : "Capture will unlock when current state is ready.";
+          els.activeMeta.textContent = bootstrapReady ? "" : "Loading current state...";
           els.endBlockButton.disabled = true;
         } else {
           els.activeTitle.textContent = `${categoryShortLabel(state.active.categoryId)} ${formatTime(state.active.start)}`;
-          els.activeMeta.textContent = locked
-            ? "Syncing..."
-            : `Running ${formatHours(minutesBetween(state.active.start, new Date().toISOString()))}`;
+          const syncText = pendingSyncCount ? " · syncing" : "";
+          els.activeMeta.textContent = `Running ${formatHours(minutesBetween(state.active.start, new Date().toISOString()))}${syncText}`;
           els.endBlockButton.disabled = locked;
         }
         [...els.quickGrid.querySelectorAll("button")].forEach((button) => {
@@ -1453,21 +1480,25 @@
         els.lastSyncStatus.textContent = status;
         els.lastSyncStatus.className = `status-chip ${isError ? "bad" : "warn"}`;
         els.serverStatus.textContent = status;
-        els.serverChip.textContent = isError ? "Issue" : "Syncing";
-        els.serverChip.className = `status-chip ${isError ? "bad" : "warn"}`;
+        els.serverChip.textContent = isError ? "Issue" : (pendingSyncCount ? "Syncing" : "Ready");
+        els.serverChip.className = `status-chip ${isError ? "bad" : (pendingSyncCount ? "warn" : "")}`;
       }
 
       function isCaptureLocked() {
-        return !bootstrapReady || refreshInFlight || operationInFlight;
+        return localActionInFlight || !bootstrapReady;
       }
 
       function renderControlLocks() {
-        const locked = isCaptureLocked();
+        const locked = operationInFlight;
         els.fixLastButton.disabled = locked || !getLastActualBlock();
         els.syncPlanButton.disabled = locked;
         els.syncReviewButton.disabled = locked;
         els.syncSetupPlanButton.disabled = locked;
         els.refreshStatusButton.disabled = operationInFlight;
+      }
+
+      function hasUsableLocalState(savedState) {
+        return Boolean(savedState?.active || savedState?.actual?.length || savedState?.calendars);
       }
 
       function resetLocalData() {
