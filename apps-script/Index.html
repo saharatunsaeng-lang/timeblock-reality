@@ -713,6 +713,7 @@
       ];
 
       const storageKey = "timeblock-reality-apps-script-v1";
+      const serverTimeoutMs = 25000;
       const state = loadState();
       let refreshInFlight = false;
       let bootstrapReady = false;
@@ -1060,10 +1061,13 @@
       function mergeBlocks(localBlocks, serverBlocks) {
         const merged = [];
         const keys = new Set();
+        const ids = new Set();
         [...serverBlocks, ...localBlocks].forEach((block) => {
+          if (block.id && ids.has(block.id)) return;
           const key = block.googleEventId ? `gcal:${block.googleEventId}` : `local:${block.id}`;
           if (keys.has(key)) return;
           keys.add(key);
+          if (block.id) ids.add(block.id);
           merged.push(block);
         });
         return merged.sort((a, b) => new Date(a.start) - new Date(b.start));
@@ -1449,8 +1453,8 @@
         els.lastSyncStatus.textContent = status;
         els.lastSyncStatus.className = `status-chip ${isError ? "bad" : "warn"}`;
         els.serverStatus.textContent = status;
-        els.serverChip.textContent = isError ? "Issue" : "Ready";
-        els.serverChip.className = `status-chip ${isError ? "bad" : ""}`;
+        els.serverChip.textContent = isError ? "Issue" : "Syncing";
+        els.serverChip.className = `status-chip ${isError ? "bad" : "warn"}`;
       }
 
       function isCaptureLocked() {
@@ -1483,7 +1487,25 @@
             reject(new Error("Deploy as Apps Script web app"));
             return;
           }
-          google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[functionName](...args);
+          let settled = false;
+          const timer = window.setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            reject(new Error("GCal sync timed out. Tap Check or Retry."));
+          }, serverTimeoutMs);
+          google.script.run
+            .withSuccessHandler((result) => {
+              if (settled) return;
+              settled = true;
+              window.clearTimeout(timer);
+              resolve(result);
+            })
+            .withFailureHandler((error) => {
+              if (settled) return;
+              settled = true;
+              window.clearTimeout(timer);
+              reject(error);
+            })[functionName](...args);
         });
       }
 

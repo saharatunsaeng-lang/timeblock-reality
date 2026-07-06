@@ -17,6 +17,7 @@ const BLOCK_ID_TAG = "blockId";
 const ACTIVE_STATUS = "active";
 const ACTUAL_STATUS = "actual";
 const ACTIVE_PLACEHOLDER_MINUTES = 360;
+const BLOCK_LOOKUP_WINDOW_DAYS = 3;
 
 function doGet(event) {
   if (event?.parameter?.mode === "audit") {
@@ -85,7 +86,7 @@ function syncPlanWeek() {
 function createActualBlock(block) {
   const calendar = requireActualCalendar_();
   const normalized = normalizeActualBlock_(block);
-  const existing = findEventById_(calendar, normalized.googleEventId);
+  const existing = findEventById_(calendar, normalized.googleEventId) || findEventByBlockId_(calendar, normalized.id, normalized.start);
 
   if (existing) {
     return finalizeActualEvent_(existing, normalized);
@@ -108,7 +109,7 @@ function createActualBlock(block) {
 function updateActualBlock(block) {
   const calendar = requireActualCalendar_();
   const normalized = normalizeActualBlock_(block);
-  let event = findEventById_(calendar, normalized.googleEventId);
+  let event = findEventById_(calendar, normalized.googleEventId) || findEventByBlockId_(calendar, normalized.id, normalized.start);
 
   if (!event) {
     return createActualBlock(normalized);
@@ -120,7 +121,7 @@ function updateActualBlock(block) {
 function startActiveBlock(block) {
   const calendar = requireActualCalendar_();
   const normalized = normalizeActiveBlock_(block);
-  const existing = findEventById_(calendar, normalized.googleEventId);
+  const existing = findEventById_(calendar, normalized.googleEventId) || findEventByBlockId_(calendar, normalized.id, normalized.start);
   const start = new Date(normalized.start);
   const placeholderEnd = addMinutes_(start, ACTIVE_PLACEHOLDER_MINUTES);
   const event = existing || calendar.createEvent(
@@ -350,6 +351,18 @@ function findEventById_(calendar, eventId) {
   } catch (error) {
     return null;
   }
+}
+
+function findEventByBlockId_(calendar, blockId, nearTime) {
+  if (!blockId) return null;
+  const center = nearTime ? new Date(nearTime) : new Date();
+  if (Number.isNaN(center.getTime())) return null;
+  const start = addDays_(center, -BLOCK_LOOKUP_WINDOW_DAYS);
+  const end = addDays_(center, BLOCK_LOOKUP_WINDOW_DAYS);
+  const events = calendar.getEvents(start, end)
+    .filter((event) => event.getTag(BLOCK_ID_TAG) === blockId)
+    .sort((a, b) => b.getStartTime().getTime() - a.getStartTime().getTime());
+  return events.length ? events[0] : null;
 }
 
 function findActiveActualEvent_() {
