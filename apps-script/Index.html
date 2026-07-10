@@ -329,6 +329,29 @@
         padding: 8px;
       }
 
+      button.time-block {
+        width: 100%;
+        color: var(--ink);
+        text-align: left;
+      }
+
+      button.time-block:active {
+        background: #d8eae4;
+      }
+
+      .block-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .edit-hint {
+        color: var(--accent);
+        font-size: 0.7rem;
+        font-weight: 900;
+      }
+
       .time-block.plan {
         border-color: var(--blue);
         background: var(--blue-soft);
@@ -452,6 +475,28 @@
         box-shadow: none;
       }
 
+      .sheet-form {
+        display: grid;
+        gap: 14px;
+        padding-top: 14px;
+      }
+
+      .sheet-form label {
+        min-width: 0;
+      }
+
+      .sheet-form input,
+      .sheet-form select {
+        min-width: 0;
+        min-height: 48px;
+        font-size: 1rem;
+      }
+
+      .sheet-form .primary-button {
+        min-height: 52px;
+        margin-top: 2px;
+      }
+
       label {
         display: grid;
         gap: 6px;
@@ -476,6 +521,10 @@
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 8px;
+      }
+
+      .form-row > * {
+        min-width: 0;
       }
 
       .empty-state {
@@ -551,6 +600,36 @@
         background: var(--surface);
         box-shadow: 0 -18px 34px rgba(28, 25, 18, 0.16);
         padding: 14px 14px max(14px, env(safe-area-inset-bottom));
+        max-height: 88dvh;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+      }
+
+      .sheet::before {
+        content: "";
+        display: block;
+        width: 42px;
+        height: 4px;
+        margin: -3px auto 12px;
+        border-radius: 999px;
+        background: var(--line);
+      }
+
+      .sheet-head {
+        align-items: flex-start;
+      }
+
+      .sheet-head strong {
+        display: block;
+        margin-top: 3px;
+        font-size: 1.2rem;
+      }
+
+      .sheet .round-button {
+        flex: 0 0 auto;
+        border: 0;
+        background: transparent;
+        font-size: 1.35rem;
       }
 
       [hidden] {
@@ -725,17 +804,17 @@
     </nav>
 
     <div class="sheet-scrim" id="fixSheetScrim" hidden></div>
-    <section class="sheet" id="fixSheet" aria-label="Fix last block" hidden>
+    <section class="sheet" id="fixSheet" role="dialog" aria-modal="true" aria-labelledby="fixSheetTitle" hidden>
       <div class="sheet-head">
         <div>
-          <span class="label">Fix last</span>
+          <span class="label">Edit actual</span>
           <strong id="fixSheetTitle">No actual yet</strong>
         </div>
-        <button class="round-button" id="closeFixSheetButton" type="button" aria-label="Close fix sheet">x</button>
+        <button class="round-button" id="closeFixSheetButton" type="button" aria-label="Close edit sheet">&#215;</button>
       </div>
-      <form class="form-card" id="fixLastForm">
+      <form class="sheet-form" id="fixLastForm">
         <label>
-          LD8
+          Domain
           <select id="manualCategory"></select>
         </label>
         <div class="form-row">
@@ -752,7 +831,7 @@
           Note
           <input id="manualNote" type="text" placeholder="optional" />
         </label>
-        <button class="primary-button" type="submit">Save fix</button>
+        <button class="primary-button" type="submit">Save changes</button>
       </form>
     </section>
 
@@ -778,6 +857,7 @@
       let pendingSyncCount = 0;
       let syncChain = Promise.resolve();
       let persistentSyncInFlight = false;
+      let fixTargetBlockId = "";
       const els = {
         viewEyebrow: document.querySelector("#viewEyebrow"),
         viewTitle: document.querySelector("#viewTitle"),
@@ -861,7 +941,7 @@
           tab.addEventListener("click", () => activateTab(tab.dataset.tab));
         });
         els.endBlockButton.addEventListener("click", () => endActiveBlock());
-        els.fixLastButton.addEventListener("click", openFixSheet);
+        els.fixLastButton.addEventListener("click", () => openFixSheet());
         els.syncLastButton.addEventListener("click", retrySyncLastBlock);
         els.closeFixSheetButton.addEventListener("click", closeFixSheet);
         els.fixSheetScrim.addEventListener("click", closeFixSheet);
@@ -1105,7 +1185,7 @@
           while (state.syncQueue.length) {
             const task = state.syncQueue[0];
             const block = state.actual.find((item) => item.id === task.blockId);
-            if (!block || block.googleEventId) {
+            if (!block || block.syncStatus === "synced") {
               state.syncQueue.shift();
               saveState();
               continue;
@@ -1137,7 +1217,7 @@
       function addPersistentSyncTask(block) {
         cleanupPersistentSyncQueue();
         const exists = state.syncQueue.some((task) => task.type === "actual" && task.blockId === block.id);
-        if (!exists && !block.googleEventId) {
+        if (!exists && block.syncStatus !== "synced") {
           state.syncQueue.push({
             id: crypto.randomUUID(),
             type: "actual",
@@ -1155,10 +1235,19 @@
           if (!task || task.type !== "actual" || !task.blockId || seen.has(task.blockId)) return false;
           seen.add(task.blockId);
           const block = state.actual.find((item) => item.id === task.blockId);
-          return Boolean(block && !block.googleEventId);
+          return Boolean(block && block.syncStatus !== "synced");
         });
         state.actual.forEach((block) => {
-          if (!block.googleEventId && !block.syncStatus) markBlockSync(block, "pending", "", false);
+          if (!block.syncStatus) markBlockSync(block, block.googleEventId ? "synced" : "pending", "", false);
+          if (block.syncStatus !== "synced" && !seen.has(block.id)) {
+            state.syncQueue.push({
+              id: crypto.randomUUID(),
+              type: "actual",
+              blockId: block.id,
+              createdAt: block.updatedAt || new Date().toISOString(),
+            });
+            seen.add(block.id);
+          }
         });
       }
 
@@ -1172,18 +1261,21 @@
         if (shouldSave) saveState();
       }
 
-      function openFixSheet() {
+      function openFixSheet(blockId = "") {
         if (operationInFlight) return;
-        const block = getLastActualBlock();
+        const block = state.actual.find((item) => item.id === blockId) || getLastActualBlock();
         if (!block) return;
+        fixTargetBlockId = block.id;
         populateFixLastForm(block);
         els.fixSheet.hidden = false;
         els.fixSheetScrim.hidden = false;
+        document.body.style.overflow = "hidden";
       }
 
       function closeFixSheet() {
         els.fixSheet.hidden = true;
         els.fixSheetScrim.hidden = true;
+        document.body.style.overflow = "";
       }
 
       function populateFixLastForm(block) {
@@ -1194,9 +1286,9 @@
         els.manualNote.value = block.note || "";
       }
 
-      async function fixLastBlock(event) {
+      function fixLastBlock(event) {
         event.preventDefault();
-        const block = getLastActualBlock();
+        const block = state.actual.find((item) => item.id === fixTargetBlockId);
         if (!block) return;
         const fixed = buildBlockFromForm(els.manualCategory.value, els.manualStart.value, els.manualEnd.value, els.manualNote.value);
         block.categoryId = fixed.categoryId;
@@ -1205,7 +1297,7 @@
         block.end = fixed.end;
         saveState();
         closeFixSheet();
-        await updateActualBlock(block);
+        queueActualSync(block);
         render();
       }
 
@@ -1283,7 +1375,9 @@
         const merged = [];
         const keys = new Set();
         const ids = new Set();
-        [...serverBlocks, ...localBlocks].forEach((block) => {
+        const pendingLocal = localBlocks.filter((block) => block.syncStatus && block.syncStatus !== "synced");
+        const stableLocal = localBlocks.filter((block) => !block.syncStatus || block.syncStatus === "synced");
+        [...pendingLocal, ...serverBlocks, ...stableLocal].forEach((block) => {
           if (block.id && ids.has(block.id)) return;
           const key = block.googleEventId ? `gcal:${block.googleEventId}` : `local:${block.id}`;
           if (keys.has(key)) return;
@@ -1383,7 +1477,22 @@
           row.className = "timeline-row";
           const type = block.source === "gcal-plan" ? "Plan" : "Actual";
           const blockClass = type === "Plan" ? "time-block plan" : "time-block";
-          row.innerHTML = `<time>${formatTime(block.start)}</time><div class="${blockClass}"><strong class="block-title">${type}: ${categoryShortLabel(block.categoryId)}</strong><span class="block-time">${formatTime(block.start)}-${formatTime(block.end)} · ${minutesBetween(block.start, block.end)}m</span></div>`;
+          const content = `<span class="block-heading"><strong class="block-title">${type}: ${categoryShortLabel(block.categoryId)}</strong>${type === "Actual" ? '<span class="edit-hint">Edit</span>' : ""}</span><span class="block-time">${formatTime(block.start)}-${formatTime(block.end)} · ${minutesBetween(block.start, block.end)}m</span>`;
+          row.innerHTML = `<time>${formatTime(block.start)}</time>`;
+          if (type === "Actual") {
+            const editButton = document.createElement("button");
+            editButton.className = blockClass;
+            editButton.type = "button";
+            editButton.setAttribute("aria-label", `Edit ${categoryShortLabel(block.categoryId)} ${formatTime(block.start)} to ${formatTime(block.end)}`);
+            editButton.innerHTML = content;
+            editButton.addEventListener("click", () => openFixSheet(block.id));
+            row.append(editButton);
+          } else {
+            const plan = document.createElement("div");
+            plan.className = blockClass;
+            plan.innerHTML = content;
+            row.append(plan);
+          }
           els.todayList.append(row);
         });
       }
@@ -1693,14 +1802,14 @@
       }
 
       function getBlockSyncState(block) {
-        if (block.googleEventId || block.syncStatus === "synced") {
-          return { label: "Synced to GCal", className: "", isSynced: true, isSyncing: false, isError: false };
-        }
         if (block.syncStatus === "syncing") {
           return { label: "Syncing...", className: "warn", isSynced: false, isSyncing: true, isError: false };
         }
         if (block.syncStatus === "error") {
           return { label: "Sync failed", className: "bad", isSynced: false, isSyncing: false, isError: true };
+        }
+        if (block.syncStatus === "synced" || (block.googleEventId && !block.syncStatus)) {
+          return { label: "Synced to GCal", className: "", isSynced: true, isSyncing: false, isError: false };
         }
         return { label: "Saved locally", className: "warn", isSynced: false, isSyncing: false, isError: false };
       }
