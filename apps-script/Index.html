@@ -227,6 +227,36 @@
         background: var(--danger-soft);
       }
 
+      .last-card.is-syncing {
+        background: var(--amber-soft);
+      }
+
+      .recovery-card {
+        display: none;
+        gap: 10px;
+        margin-bottom: 12px;
+        border-color: rgba(155, 71, 65, 0.35);
+        background: var(--danger-soft);
+        padding: 12px;
+      }
+
+      .recovery-card.is-visible {
+        display: grid;
+      }
+
+      .recovery-card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.84rem;
+        font-weight: 750;
+      }
+
+      .button-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
       .status-chip {
         display: inline-flex;
         align-items: center;
@@ -548,6 +578,19 @@
         <div class="date-label" id="todayLabel"></div>
       </header>
 
+      <section class="status-card recovery-card" id="recoveryCard" aria-label="App recovery">
+        <div>
+          <span class="label">Recovery</span>
+          <strong id="recoveryTitle">App issue detected</strong>
+          <p id="recoveryMessage">Reload or retry pending sync.</p>
+        </div>
+        <div class="button-row">
+          <button id="retryPendingButton" class="secondary-button" type="button">Retry sync</button>
+          <button id="reloadAppButton" class="secondary-button" type="button">Reload</button>
+          <button id="resetRecoveryButton" class="danger-button" type="button">Reset cache</button>
+        </div>
+      </section>
+
       <section class="panel is-active" id="capturePanel">
         <section class="now-card" aria-label="Current block">
           <div>
@@ -657,6 +700,19 @@
               <strong>Reset local cache</strong>
               <button id="resetButton" class="danger-button" type="button">Reset</button>
             </div>
+            <div class="setting-row">
+              <div>
+                <span class="label">Pending sync</span>
+                <strong id="pendingSyncStatus">0 waiting</strong>
+              </div>
+              <button id="retryAllButton" class="secondary-button" type="button">Retry</button>
+            </div>
+            <div class="setting-row">
+              <div>
+                <span class="label">Last app event</span>
+                <strong id="lastLogStatus">No log yet</strong>
+              </div>
+            </div>
           </div>
         </section>
       </section>
@@ -720,7 +776,8 @@
       let operationInFlight = false;
       let localActionInFlight = false;
       let pendingSyncCount = 0;
-      let syncQueue = Promise.resolve();
+      let syncChain = Promise.resolve();
+      let persistentSyncInFlight = false;
       const els = {
         viewEyebrow: document.querySelector("#viewEyebrow"),
         viewTitle: document.querySelector("#viewTitle"),
@@ -763,16 +820,38 @@
         serverChip: document.querySelector("#serverChip"),
         planCalendarStatus: document.querySelector("#planCalendarStatus"),
         actualCalendarStatus: document.querySelector("#actualCalendarStatus"),
+        pendingSyncStatus: document.querySelector("#pendingSyncStatus"),
+        retryAllButton: document.querySelector("#retryAllButton"),
+        lastLogStatus: document.querySelector("#lastLogStatus"),
+        recoveryCard: document.querySelector("#recoveryCard"),
+        recoveryTitle: document.querySelector("#recoveryTitle"),
+        recoveryMessage: document.querySelector("#recoveryMessage"),
+        retryPendingButton: document.querySelector("#retryPendingButton"),
+        reloadAppButton: document.querySelector("#reloadAppButton"),
+        resetRecoveryButton: document.querySelector("#resetRecoveryButton"),
       };
 
-      init();
+      window.addEventListener("error", (event) => showRecovery(`App error: ${event.message || "Unknown error"}`));
+      window.addEventListener("unhandledrejection", (event) => {
+        const reason = event.reason?.message || String(event.reason || "Unknown promise error");
+        showRecovery(`App error: ${reason}`);
+      });
+
+      try {
+        init();
+      } catch (error) {
+        showRecovery(readableError(error));
+      }
 
       function init() {
+        normalizeLoadedState();
+        logAction("open app");
         fillSelect(els.manualCategory);
         renderCaptureButtons(els.quickGrid);
         setDefaultTimes();
         bindEvents();
         render();
+        drainPersistentSyncQueue();
         refreshStatus();
         setInterval(renderActive, 60 * 1000);
       }
@@ -793,6 +872,10 @@
         els.copyMemoryButton.addEventListener("click", copyWeeklyMemory);
         els.refreshStatusButton.addEventListener("click", refreshStatus);
         els.resetButton.addEventListener("click", resetLocalData);
+        els.retryAllButton.addEventListener("click", drainPersistentSyncQueue);
+        els.retryPendingButton.addEventListener("click", drainPersistentSyncQueue);
+        els.reloadAppButton.addEventListener("click", () => window.location.reload());
+        els.resetRecoveryButton.addEventListener("click", resetLocalData);
         document.addEventListener("visibilitychange", handleVisibilityResume);
       }
 
@@ -851,6 +934,7 @@
         localActionInFlight = true;
         activateTab("capture");
         try {
+          logAction(`start ${categoryShortLabel(categoryId)}`);
           const endedBlock = finishActiveBlockLocally();
           state.active = {
             id: crypto.randomUUID(),
@@ -873,6 +957,7 @@
         if (isCaptureLocked()) return;
         localActionInFlight = true;
         try {
+          logAction("end active");
           const block = finishActiveBlockLocally();
           if (!block) return;
           queueActualSync(block);
@@ -897,6 +982,9 @@
           start: state.active.start,
           end: end.toISOString(),
           googleEventId: state.active.googleEventId || "",
+          syncStatus: "pending",
+          syncError: "",
+          updatedAt: new Date().toISOString(),
         };
         state.actual.push(block);
         state.active = null;
@@ -905,7 +993,10 @@
       }
 
       function queueActualSync(block) {
-        enqueueSync("Saving to GCal...", () => syncActualBlock(block));
+        if (!block) return;
+        markBlockSync(block, "pending");
+        addPersistentSyncTask(block);
+        drainPersistentSyncQueue();
       }
 
       function queueActiveSync(activeBlock) {
@@ -925,7 +1016,7 @@
         pendingSyncCount += 1;
         updateSyncStatus(status);
         render();
-        syncQueue = syncQueue
+        syncChain = syncChain
           .catch(() => {})
           .then(task)
           .finally(() => {
@@ -937,21 +1028,30 @@
             }
             render();
           });
-        return syncQueue;
+        return syncChain;
       }
 
       async function syncActualBlock(block) {
+        if (!block) return false;
         updateSyncStatus("Saving to GCal...");
+        markBlockSync(block, "syncing");
         try {
           const result = await runServer("createActualBlock", block);
           Object.assign(block, result.block);
+          markBlockSync(block, "synced");
           if (result.calendars) applyCalendarStatus(result.calendars);
           saveState();
+          logAction(`synced ${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)}`);
           updateSyncStatus("Saved to GCal");
+          return true;
         } catch (error) {
-          updateSyncStatus(readableError(error), true);
+          const message = readableError(error);
+          markBlockSync(block, "error", message);
+          logAction(`sync failed: ${message}`);
+          showRecovery(message, "GCal sync failed");
+          updateSyncStatus(message, true);
+          return false;
         }
-        render();
       }
 
       async function updateActualBlock(block) {
@@ -959,15 +1059,22 @@
         operationInFlight = true;
         render();
         updateSyncStatus("Fixing in GCal...");
+        markBlockSync(block, "syncing");
         try {
           const result = await runServer("updateActualBlock", block);
           Object.assign(block, result.block);
+          markBlockSync(block, "synced");
           if ("active" in result) state.active = result.active;
           if (result.calendars) applyCalendarStatus(result.calendars);
           saveState();
+          logAction(`fixed ${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)}`);
           updateSyncStatus("Fixed in GCal");
         } catch (error) {
-          updateSyncStatus(readableError(error), true);
+          const message = readableError(error);
+          markBlockSync(block, "error", message);
+          addPersistentSyncTask(block);
+          showRecovery(message, "Fix sync failed");
+          updateSyncStatus(message, true);
         } finally {
           operationInFlight = false;
         }
@@ -979,6 +1086,90 @@
         const block = getLastActualBlock();
         if (!block) return;
         queueActualSync(block);
+      }
+
+      async function drainPersistentSyncQueue() {
+        if (persistentSyncInFlight) return;
+        cleanupPersistentSyncQueue();
+        if (!state.syncQueue.length) {
+          render();
+          return;
+        }
+
+        persistentSyncInFlight = true;
+        pendingSyncCount = state.syncQueue.length;
+        updateSyncStatus(`Syncing ${pendingSyncCount} pending...`);
+        render();
+
+        try {
+          while (state.syncQueue.length) {
+            const task = state.syncQueue[0];
+            const block = state.actual.find((item) => item.id === task.blockId);
+            if (!block || block.googleEventId) {
+              state.syncQueue.shift();
+              saveState();
+              continue;
+            }
+
+            const ok = await syncActualBlock(block);
+            if (!ok) break;
+            state.syncQueue.shift();
+            saveState();
+            pendingSyncCount = state.syncQueue.length;
+            render();
+          }
+        } finally {
+          persistentSyncInFlight = false;
+          pendingSyncCount = state.syncQueue.length;
+          if (state.syncQueue.length) {
+            updateSyncStatus(`${state.syncQueue.length} unsynced`, true);
+          } else {
+            state.lastError = "";
+            saveState();
+            els.serverStatus.textContent = "Ready";
+            els.serverChip.textContent = "Ready";
+            els.serverChip.className = "status-chip";
+          }
+          render();
+        }
+      }
+
+      function addPersistentSyncTask(block) {
+        cleanupPersistentSyncQueue();
+        const exists = state.syncQueue.some((task) => task.type === "actual" && task.blockId === block.id);
+        if (!exists && !block.googleEventId) {
+          state.syncQueue.push({
+            id: crypto.randomUUID(),
+            type: "actual",
+            blockId: block.id,
+            createdAt: new Date().toISOString(),
+          });
+          logAction(`queued ${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)}`);
+        }
+        saveState();
+      }
+
+      function cleanupPersistentSyncQueue() {
+        const seen = new Set();
+        state.syncQueue = state.syncQueue.filter((task) => {
+          if (!task || task.type !== "actual" || !task.blockId || seen.has(task.blockId)) return false;
+          seen.add(task.blockId);
+          const block = state.actual.find((item) => item.id === task.blockId);
+          return Boolean(block && !block.googleEventId);
+        });
+        state.actual.forEach((block) => {
+          if (!block.googleEventId && !block.syncStatus) markBlockSync(block, "pending", "", false);
+        });
+      }
+
+      function markBlockSync(block, status, error = "", shouldSave = true) {
+        block.syncStatus = status;
+        block.syncError = error || "";
+        block.updatedAt = new Date().toISOString();
+        if (status === "synced") {
+          block.syncedAt = new Date().toISOString();
+        }
+        if (shouldSave) saveState();
       }
 
       function openFixSheet() {
@@ -1071,8 +1262,10 @@
 
       function handleVisibilityResume() {
         if (document.hidden) return;
+        logAction("resume app");
         setDefaultTimes();
         renderActive();
+        drainPersistentSyncQueue();
         refreshStatus();
       }
 
@@ -1116,10 +1309,12 @@
       }
 
       function render() {
+        renderRecovery();
         renderActive();
         renderLastBlock();
         renderToday();
         renderReview();
+        renderSyncDiagnostics();
         renderControlLocks();
       }
 
@@ -1146,6 +1341,7 @@
         const block = getLastActualBlock();
         const locked = isCaptureLocked();
         els.lastBlockCard.classList.remove("has-error");
+        els.lastBlockCard.classList.remove("is-syncing");
         if (!block) {
           els.lastBlockTitle.textContent = "No actual yet";
           els.lastSyncStatus.textContent = "Not synced";
@@ -1156,12 +1352,13 @@
           return;
         }
         els.lastBlockTitle.textContent = `${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)}`;
-        const isSynced = Boolean(block.googleEventId);
-        els.lastSyncStatus.textContent = isSynced ? "Saved to GCal" : "Not saved";
-        els.lastSyncStatus.className = `status-chip ${isSynced ? "" : "bad"}`;
-        els.lastBlockCard.classList.toggle("has-error", !isSynced);
+        const syncState = getBlockSyncState(block);
+        els.lastSyncStatus.textContent = syncState.label;
+        els.lastSyncStatus.className = `status-chip ${syncState.className}`;
+        els.lastBlockCard.classList.toggle("has-error", syncState.isError);
+        els.lastBlockCard.classList.toggle("is-syncing", syncState.isSyncing);
         els.fixLastButton.disabled = locked;
-        els.syncLastButton.disabled = locked || isSynced;
+        els.syncLastButton.disabled = locked || syncState.isSynced || syncState.isSyncing;
       }
 
       function renderToday() {
@@ -1476,12 +1673,51 @@
         els.actualCalendarStatus.textContent = calendars.actualFound ? `${calendars.actualName} found` : "Actual-Time Log missing";
       }
 
+      function renderSyncDiagnostics() {
+        cleanupPersistentSyncQueue();
+        const pending = state.syncQueue.length;
+        els.pendingSyncStatus.textContent = pending ? `${pending} waiting` : "0 waiting";
+        els.retryAllButton.disabled = operationInFlight || persistentSyncInFlight || !pending;
+        const last = state.actionLog[0];
+        els.lastLogStatus.textContent = last ? `${formatTime(last.at)} ${last.message}` : "No log yet";
+      }
+
+      function renderRecovery() {
+        const pending = state.syncQueue?.length || 0;
+        const lastError = state.lastError || "";
+        const shouldShow = Boolean(lastError || pending);
+        els.recoveryCard.classList.toggle("is-visible", shouldShow);
+        els.recoveryTitle.textContent = lastError ? "App issue detected" : "Pending GCal sync";
+        els.recoveryMessage.textContent = lastError || `${pending} block${pending > 1 ? "s" : ""} waiting to sync to GCal.`;
+        els.retryPendingButton.disabled = persistentSyncInFlight || !pending;
+      }
+
+      function getBlockSyncState(block) {
+        if (block.googleEventId || block.syncStatus === "synced") {
+          return { label: "Synced to GCal", className: "", isSynced: true, isSyncing: false, isError: false };
+        }
+        if (block.syncStatus === "syncing") {
+          return { label: "Syncing...", className: "warn", isSynced: false, isSyncing: true, isError: false };
+        }
+        if (block.syncStatus === "error") {
+          return { label: "Sync failed", className: "bad", isSynced: false, isSyncing: false, isError: true };
+        }
+        return { label: "Saved locally", className: "warn", isSynced: false, isSyncing: false, isError: false };
+      }
+
       function updateSyncStatus(status, isError = false) {
         els.lastSyncStatus.textContent = status;
         els.lastSyncStatus.className = `status-chip ${isError ? "bad" : "warn"}`;
         els.serverStatus.textContent = status;
         els.serverChip.textContent = isError ? "Issue" : (pendingSyncCount ? "Syncing" : "Ready");
         els.serverChip.className = `status-chip ${isError ? "bad" : (pendingSyncCount ? "warn" : "")}`;
+        if (isError) {
+          state.lastError = status;
+          saveState();
+        } else if (!state.syncQueue?.length) {
+          state.lastError = "";
+          saveState();
+        }
       }
 
       function isCaptureLocked() {
@@ -1507,9 +1743,43 @@
         state.plan = [];
         state.actual = [];
         state.active = null;
+        state.syncQueue = [];
+        state.actionLog = [];
+        state.lastError = "";
         saveState();
         render();
         activateTab("capture");
+      }
+
+      function showRecovery(message, title = "App issue detected") {
+        const text = message || "Unknown app error";
+        state.lastError = text;
+        logAction(text);
+        saveState();
+        if (els?.recoveryCard) {
+          els.recoveryTitle.textContent = title;
+          els.recoveryMessage.textContent = text;
+          els.recoveryCard.classList.add("is-visible");
+        }
+        renderSyncDiagnostics();
+      }
+
+      function logAction(message) {
+        state.actionLog = [
+          { at: new Date().toISOString(), message },
+          ...(Array.isArray(state.actionLog) ? state.actionLog : []),
+        ].slice(0, 20);
+        saveState();
+      }
+
+      function normalizeLoadedState() {
+        state.plan = Array.isArray(state.plan) ? state.plan : [];
+        state.actual = Array.isArray(state.actual) ? state.actual : [];
+        state.syncQueue = Array.isArray(state.syncQueue) ? state.syncQueue : [];
+        state.actionLog = Array.isArray(state.actionLog) ? state.actionLog : [];
+        state.lastError = state.lastError || "";
+        cleanupPersistentSyncQueue();
+        saveState();
       }
 
       function runServer(functionName, ...args) {
@@ -1561,9 +1831,20 @@
             actual: Array.isArray(saved.actual) ? saved.actual : [],
             active: saved.active || null,
             calendars: saved.calendars || null,
+            syncQueue: Array.isArray(saved.syncQueue) ? saved.syncQueue : [],
+            actionLog: Array.isArray(saved.actionLog) ? saved.actionLog : [],
+            lastError: saved.lastError || "",
           };
-        } catch {
-          return { plan: [], actual: [], active: null, calendars: null };
+        } catch (error) {
+          return {
+            plan: [],
+            actual: [],
+            active: null,
+            calendars: null,
+            syncQueue: [],
+            actionLog: [{ at: new Date().toISOString(), message: "local cache parse failed" }],
+            lastError: "Local cache could not be read. Reset cache if the app keeps failing.",
+          };
         }
       }
 
@@ -1571,7 +1852,7 @@
         try {
           localStorage.setItem(storageKey, JSON.stringify(state));
         } catch (error) {
-          // Server state is the durable source; local storage is only a cache.
+          state.lastError = "Local cache could not be saved. Keep this tab open until GCal sync finishes.";
         }
       }
 
