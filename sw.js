@@ -1,8 +1,8 @@
-const cacheName = "timeblock-reality-v13-local-first";
+const cacheName = "timeblock-reality-v14-sync-reliability";
 const assets = [
-  "./?v=20260712-local-first",
-  "index.html?v=20260712-local-first",
-  "manifest.webmanifest?v=20260712-local-first",
+  "./?v=20260712-sync-reliability",
+  "index.html?v=20260712-sync-reliability",
+  "manifest.webmanifest?v=20260712-sync-reliability",
   "icon.svg",
 ];
 

@@ -58,8 +58,14 @@ Runtime behavior:
 - Weekly category delta.
 - Apps Script Calendar sync.
 
+## Sync reliability
+
+- Google token silently refreshes on app resume and on 401 (no manual reconnect needed for a normal expiry).
+- Actual-block sync is idempotent: before creating an event it looks up an existing one by `blockId` (extendedProperties), so a lost response never creates a duplicate GCal event.
+- Blocks under 60 seconds are discarded instead of padded to 5 minutes, so a mis-tap never writes fake data to `Actual-Time Log`.
+- An active block older than 6 hours (device died / forgot to end) is auto-closed to a 30-minute placeholder on next bootstrap and flagged for a manual fix, instead of being resurrected as still-running.
+
 ## Next phase
 
 - Push weekly review into the secondbrain memory app.
 - Read actual history back from `Actual-Time Log`.
-- Add stronger duplicate protection for repeated syncs.

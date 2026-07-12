@@ -906,6 +906,7 @@
         bindEvents();
         initGoogleClient();
         render();
+        silentReconnectGoogle();
         drainPersistentSyncQueue();
         refreshStatus();
         setInterval(renderActive, 60 * 1000);
@@ -1026,8 +1027,12 @@
         if (!state.active) return null;
         const end = new Date();
         const start = new Date(state.active.start);
+        const googleEventId = state.active.googleEventId || "";
         if (end.getTime() - start.getTime() < 60 * 1000) {
-          end.setMinutes(end.getMinutes() + 5);
+          state.active = null;
+          saveState();
+          if (googleEventId) queueActiveDeletion(googleEventId);
+          return null;
         }
         const block = {
           id: state.active.id,
@@ -1035,7 +1040,7 @@
           note: "",
           start: state.active.start,
           end: end.toISOString(),
-          googleEventId: state.active.googleEventId || "",
+          googleEventId,
           syncStatus: "pending",
           syncError: "",
           updatedAt: new Date().toISOString(),
@@ -1044,6 +1049,17 @@
         state.active = null;
         saveState();
         return block;
+      }
+
+      function queueActiveDeletion(googleEventId) {
+        if (!googleAccessToken || !googleEventId) return;
+        enqueueSync("Cleaning up...", async () => {
+          try {
+            await deleteDirectEvent(googleEventId);
+          } catch (error) {
+            logAction(`cleanup failed: ${readableError(error)}`);
+          }
+        });
       }
 
       function queueActualSync(block) {
@@ -1353,18 +1369,46 @@
         logAction("resume app");
         setDefaultTimes();
         renderActive();
+        silentReconnectGoogle();
         drainPersistentSyncQueue();
         refreshStatus();
       }
+
+      const staleActiveMs = 6 * 60 * 60 * 1000;
 
       function applyBootstrapState(result) {
         if (!result) return;
         if (Array.isArray(result.plan)) state.plan = result.plan;
         if (Array.isArray(result.actual)) state.actual = mergeBlocks(state.actual, result.actual);
-        if ("active" in result && !pendingSyncCount && !localActionInFlight) state.active = result.active;
+        if ("active" in result && !pendingSyncCount && !localActionInFlight) {
+          state.active = resolveIncomingActive(result.active);
+        }
         if (result.calendars) applyCalendarStatus(result.calendars);
         saveState();
         render();
+      }
+
+      function resolveIncomingActive(active) {
+        if (!active) return null;
+        const startedAt = new Date(active.start).getTime();
+        if (!Number.isFinite(startedAt) || Date.now() - startedAt < staleActiveMs) return active;
+        const end = addMinutes(new Date(startedAt), 30);
+        const block = {
+          id: active.id,
+          categoryId: active.categoryId,
+          note: "Auto-closed (forgot to end) - please fix",
+          start: active.start,
+          end: end.toISOString(),
+          googleEventId: active.googleEventId || "",
+          syncStatus: "pending",
+          syncError: "",
+          updatedAt: new Date().toISOString(),
+        };
+        state.actual.push(block);
+        queueActualSync(block);
+        logAction(`auto-closed stale active ${categoryShortLabel(active.categoryId)}`);
+        showRecovery(`Forgot to end ${categoryShortLabel(active.categoryId)}. Auto-closed at 30 min, fix the time in Last block.`, "Stale block closed");
+        return null;
       }
 
       function mergeBlocks(localBlocks, serverBlocks) {
@@ -1928,6 +1972,26 @@
         });
       }
 
+      let silentReconnectInFlight = false;
+
+      async function silentReconnectGoogle() {
+        if (!state.google.connected || googleAccessToken || silentReconnectInFlight) return;
+        silentReconnectInFlight = true;
+        try {
+          await prepareGoogleClient();
+          const previousErrorCallback = tokenClient.error_callback;
+          tokenClient.error_callback = (error) => {
+            tokenClient.error_callback = previousErrorCallback;
+            logAction(`silent reconnect failed: ${error?.error || error?.type || "unknown"}`);
+          };
+          tokenClient.requestAccessToken({ prompt: "" });
+        } catch (error) {
+          logAction(`silent reconnect unavailable: ${readableError(error)}`);
+        } finally {
+          silentReconnectInFlight = false;
+        }
+      }
+
       async function connectGoogle() {
         if (googleAccessToken) return;
         try {
@@ -2027,14 +2091,34 @@
 
       async function createDirectActualBlock(block) {
         await ensureGoogleReady();
-        const result = block.googleEventId
-          ? await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events/${encodeURIComponent(block.googleEventId)}`, { method: "PATCH", body: JSON.stringify(actualEventPayload(block)) })
+        let googleEventId = block.googleEventId;
+        if (!googleEventId) {
+          const existing = await findDirectEventByBlockId(block.id);
+          if (existing) googleEventId = existing.id;
+        }
+        const result = googleEventId
+          ? await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events/${encodeURIComponent(googleEventId)}`, { method: "PATCH", body: JSON.stringify(actualEventPayload(block)) })
           : await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events`, { method: "POST", body: JSON.stringify(actualEventPayload(block)) });
         return { block: serializeDirectActualEvent(result, block), calendars: state.calendars, active: state.active };
       }
 
+      async function findDirectEventByBlockId(blockId) {
+        const params = new URLSearchParams({
+          privateExtendedProperty: `blockId=${blockId}`,
+          showDeleted: "false",
+          maxResults: "1",
+        });
+        const data = await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events?${params}`);
+        return (data.items || [])[0] || null;
+      }
+
       async function updateDirectActualBlock(block) {
         return createDirectActualBlock(block);
+      }
+
+      async function deleteDirectEvent(googleEventId) {
+        await ensureGoogleReady();
+        await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events/${encodeURIComponent(googleEventId)}`, { method: "DELETE" });
       }
 
       async function startDirectActiveBlock(block) {
@@ -2113,6 +2197,10 @@
 
       async function ensureGoogleReady() {
         if (!googleAccessToken || Date.now() > googleTokenExpiresAt - 60000) {
+          if (state.google.connected) {
+            silentReconnectGoogle();
+            throw new Error("Reconnecting to Google Calendar...");
+          }
           throw new Error("Connect Google Calendar in More first.");
         }
         if (!state.google.actualCalendarId || !Object.values(state.google.planCalendarIds || {}).some(Boolean)) {
@@ -2126,7 +2214,13 @@
           ...options,
           headers: { Authorization: `Bearer ${googleAccessToken}`, "Content-Type": "application/json", ...(options.headers || {}) },
         });
+        if (response.status === 401) {
+          googleAccessToken = "";
+          silentReconnectGoogle();
+          throw new Error("Google session expired, reconnecting...");
+        }
         if (!response.ok) throw new Error(`Google Calendar API failed: ${response.status}`);
+        if (response.status === 204) return {};
         return response.json();
       }
 
