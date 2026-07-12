@@ -865,6 +865,8 @@
       let tokenClient = null;
       let googleAccessToken = "";
       let googleTokenExpiresAt = 0;
+      let silentReconnectInFlight = false;
+      let googleAuthStatus = "";
       let refreshInFlight = false;
       // Capture stays available while the server restores optional background state.
       let bootstrapReady = true;
@@ -1942,9 +1944,14 @@
             client_id: googleClientId,
             scope: googleScopes,
             callback: handleGoogleToken,
-            error_callback: () => renderGoogleStatus("GCal authorization failed"),
+            error_callback: handleGoogleAuthError,
           });
           renderGoogleState();
+          if (state.google.connected) {
+            silentReconnectInFlight = true;
+            renderGoogleStatus("Reconnecting...");
+            tokenClient.requestAccessToken({ prompt: "" });
+          }
         }).catch(() => renderGoogleStatus("Google authorization unavailable"));
       }
 
@@ -1969,18 +1976,36 @@
           renderGoogleStatus("Google authorization unavailable");
           return;
         }
+        silentReconnectInFlight = false;
         tokenClient.requestAccessToken({ prompt: googleAccessToken ? "" : "consent" });
+      }
+
+      function handleGoogleAuthError(error) {
+        const wasSilent = silentReconnectInFlight;
+        silentReconnectInFlight = false;
+        googleAccessToken = "";
+        if (wasSilent) {
+          renderGoogleStatus("Connect required");
+          renderGoogleState();
+          return;
+        }
+        renderGoogleStatus(error?.error_description || "GCal authorization failed");
       }
 
       async function handleGoogleToken(response) {
         if (response.error) {
-          renderGoogleStatus("GCal authorization failed");
+          handleGoogleAuthError(response);
           return;
         }
+        silentReconnectInFlight = false;
         googleAccessToken = response.access_token;
         googleTokenExpiresAt = Date.now() + Number(response.expires_in || 3600) * 1000;
+        state.google.connected = true;
+        state.google.lastConnectedAt = new Date().toISOString();
+        saveState();
         try {
           await refreshGoogleCalendars();
+          renderGoogleState();
           renderGoogleStatus("Connected");
           await refreshStatus();
           drainPersistentSyncQueue();
@@ -2158,19 +2183,22 @@
       }
 
       function renderGoogleStatus(status) {
+        googleAuthStatus = status;
         els.googleStatus.textContent = status;
         els.serverStatus.textContent = status;
         els.serverChip.textContent = googleAccessToken ? "Connected" : "Offline";
         els.serverChip.className = googleAccessToken ? "status-chip" : "status-chip warn";
+        renderGoogleState();
       }
 
       function renderGoogleState() {
-        els.connectGoogleButton.disabled = !tokenClient;
-        els.googleStatus.textContent = googleAccessToken ? "Connected" : "Not connected";
+        els.connectGoogleButton.disabled = !tokenClient || silentReconnectInFlight;
+        els.connectGoogleButton.textContent = googleAccessToken ? "Connected" : state.google.connected ? "Reconnect" : "Connect";
+        els.googleStatus.textContent = googleAuthStatus || (googleAccessToken ? "Connected" : state.google.connected ? "Reconnect available" : "Not connected");
       }
 
       function defaultGoogleState() {
-        return { planCalendarIds: {}, actualCalendarId: "", actualCalendarName: "" };
+        return { planCalendarIds: {}, actualCalendarId: "", actualCalendarName: "", connected: false, lastConnectedAt: "" };
       }
 
       function runServer(functionName, ...args) {
