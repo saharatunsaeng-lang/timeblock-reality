@@ -41,11 +41,11 @@ Required Google Calendar names:
 
 Runtime behavior:
 
-- Google Calendar is authorized from the More tab when needed.
-- Actual capture remains local-first and syncs directly to `Actual-Time Log` after authorization.
+- Google Calendar is authorized on demand from the More tab; it is never loaded during app startup.
+- Actual capture is local-first and never waits for Google. Pending blocks sync to `Actual-Time Log` after authorization.
 - `Sync Plan` imports the current week from the 8 LD8 calendars.
 - New actual blocks are written server-side to `Actual-Time Log`.
-- No recurring `Connect GCal` step is needed in normal use.
+- No `Connect GCal` step is needed for normal Start/End capture.
 
 ## Current scope
 

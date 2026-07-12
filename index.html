@@ -4,9 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260712-direct-oauth" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260712-local-first" />
     <title>TimeBlock Reality</title>
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
       :root {
         color-scheme: light;
@@ -865,7 +864,6 @@
       let tokenClient = null;
       let googleAccessToken = "";
       let googleTokenExpiresAt = 0;
-      let silentReconnectInFlight = false;
       let googleAuthStatus = "";
       let refreshInFlight = false;
       // Capture stays available while the server restores optional background state.
@@ -1104,6 +1102,10 @@
       }
 
       function queueActiveSync(activeBlock) {
+        if (!googleAccessToken) {
+          render();
+          return;
+        }
         enqueueSync("Starting in GCal...", async () => {
           try {
             const result = await runServer("startActiveBlock", activeBlock);
@@ -1331,6 +1333,10 @@
 
       async function syncPlan() {
         if (operationInFlight) return;
+        if (!googleAccessToken) {
+          renderGoogleStatus("Connect Google in More to sync plan");
+          return;
+        }
         operationInFlight = true;
         render();
         els.serverStatus.textContent = "Syncing plan...";
@@ -1359,8 +1365,8 @@
         if (refreshInFlight) return;
         if (!googleAccessToken) {
           bootstrapReady = true;
-          els.serverStatus.textContent = "Connect Google to sync";
-          els.serverChip.textContent = "Offline";
+          els.serverStatus.textContent = "Local capture ready";
+          els.serverChip.textContent = "Local";
           els.serverChip.className = "status-chip warn";
           render();
           return;
@@ -1939,20 +1945,32 @@
 
       function initGoogleClient() {
         renderGoogleState();
-        waitForGoogleIdentity().then(() => {
-          tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: googleClientId,
-            scope: googleScopes,
-            callback: handleGoogleToken,
-            error_callback: handleGoogleAuthError,
-          });
-          renderGoogleState();
-          if (state.google.connected) {
-            silentReconnectInFlight = true;
-            renderGoogleStatus("Reconnecting...");
-            tokenClient.requestAccessToken({ prompt: "" });
-          }
-        }).catch(() => renderGoogleStatus("Google authorization unavailable"));
+      }
+
+      async function prepareGoogleClient() {
+        await loadGoogleIdentity();
+        if (tokenClient) return;
+        tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: googleClientId,
+          scope: googleScopes,
+          callback: handleGoogleToken,
+          error_callback: handleGoogleAuthError,
+        });
+        renderGoogleState();
+      }
+
+      function loadGoogleIdentity() {
+        if (window.google?.accounts?.oauth2) return Promise.resolve();
+        const existing = document.querySelector("script[data-google-identity]");
+        if (!existing) {
+          const script = document.createElement("script");
+          script.src = "https://accounts.google.com/gsi/client";
+          script.async = true;
+          script.defer = true;
+          script.dataset.googleIdentity = "true";
+          document.head.appendChild(script);
+        }
+        return waitForGoogleIdentity();
       }
 
       function waitForGoogleIdentity() {
@@ -1971,24 +1989,21 @@
         });
       }
 
-      function connectGoogle() {
-        if (!tokenClient) {
+      async function connectGoogle() {
+        if (googleAccessToken) return;
+        try {
+          renderGoogleStatus("Opening Google...");
+          await prepareGoogleClient();
+          tokenClient.requestAccessToken({ prompt: state.google.connected ? "" : "consent" });
+        } catch (error) {
           renderGoogleStatus("Google authorization unavailable");
-          return;
         }
-        silentReconnectInFlight = false;
-        tokenClient.requestAccessToken({ prompt: googleAccessToken ? "" : "consent" });
       }
 
       function handleGoogleAuthError(error) {
-        const wasSilent = silentReconnectInFlight;
-        silentReconnectInFlight = false;
         googleAccessToken = "";
-        if (wasSilent) {
-          renderGoogleStatus("Connect required");
-          renderGoogleState();
-          return;
-        }
+        state.google.connected = false;
+        saveState();
         renderGoogleStatus(error?.error_description || "GCal authorization failed");
       }
 
@@ -1997,7 +2012,6 @@
           handleGoogleAuthError(response);
           return;
         }
-        silentReconnectInFlight = false;
         googleAccessToken = response.access_token;
         googleTokenExpiresAt = Date.now() + Number(response.expires_in || 3600) * 1000;
         state.google.connected = true;
@@ -2192,9 +2206,9 @@
       }
 
       function renderGoogleState() {
-        els.connectGoogleButton.disabled = !tokenClient || silentReconnectInFlight;
-        els.connectGoogleButton.textContent = googleAccessToken ? "Connected" : state.google.connected ? "Reconnect" : "Connect";
-        els.googleStatus.textContent = googleAuthStatus || (googleAccessToken ? "Connected" : state.google.connected ? "Reconnect available" : "Not connected");
+        els.connectGoogleButton.disabled = false;
+        els.connectGoogleButton.textContent = googleAccessToken ? "Connected" : "Connect";
+        els.googleStatus.textContent = googleAuthStatus || (googleAccessToken ? "Connected" : "Optional");
       }
 
       function defaultGoogleState() {
