@@ -1,8 +1,8 @@
-const cacheName = "timeblock-reality-v11-local-first";
+const cacheName = "timeblock-reality-v12-direct-oauth";
 const assets = [
-  "./?v=20260712-local-first-2",
-  "index.html?v=20260712-local-first-2",
-  "manifest.webmanifest?v=20260712-local-first-2",
+  "./?v=20260712-direct-oauth",
+  "index.html?v=20260712-direct-oauth",
+  "manifest.webmanifest?v=20260712-direct-oauth",
   "icon.svg",
 ];
 

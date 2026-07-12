@@ -4,8 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260712-pages-bridge" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260712-direct-oauth" />
     <title>TimeBlock Reality</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
       :root {
         color-scheme: light;
@@ -756,6 +757,13 @@
           <div class="settings-list">
             <div class="setting-row">
               <div>
+                <span class="label">Google Calendar</span>
+                <strong id="googleStatus">Not connected</strong>
+              </div>
+              <button id="connectGoogleButton" class="secondary-button" type="button">Connect</button>
+            </div>
+            <div class="setting-row">
+              <div>
                 <span class="label">Server</span>
                 <strong id="serverStatus">Loading...</strong>
               </div>
@@ -851,7 +859,12 @@
 
       const storageKey = "timeblock-reality-apps-script-v1";
       const serverTimeoutMs = 10000;
+      const googleClientId = "809951458535-dg6gjp5nk4fjrgs1kngrger4cni90er9.apps.googleusercontent.com";
+      const googleScopes = "https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events";
       const state = loadState();
+      let tokenClient = null;
+      let googleAccessToken = "";
+      let googleTokenExpiresAt = 0;
       let refreshInFlight = false;
       // Capture stays available while the server restores optional background state.
       let bootstrapReady = true;
@@ -861,20 +874,6 @@
       let syncChain = Promise.resolve();
       let persistentSyncInFlight = false;
       let fixTargetBlockId = "";
-      const pagesBridgeUrl = "https://script.google.com/macros/s/AKfycbzhzb2xT22srpiT_cN8zy8UaR7QKAvfOut_HRwXyt-Xur-3TsSPpiCo0Vk2kWvLN8lIag/exec?mode=bridge";
-      const pagesBridgeRequests = new Map();
-
-      window.addEventListener("message", (event) => {
-        const data = event.data;
-        if (!data || data.source !== "timeblock-bridge") return;
-        const request = pagesBridgeRequests.get(data.requestId);
-        if (!request) return;
-        pagesBridgeRequests.delete(data.requestId);
-        window.clearTimeout(request.timer);
-        request.frame.remove();
-        if (data.ok) request.resolve(data.result);
-        else request.reject(new Error(data.error?.message || "GCal bridge error"));
-      });
 
       const els = {
         viewEyebrow: document.querySelector("#viewEyebrow"),
@@ -916,6 +915,8 @@
         refreshStatusButton: document.querySelector("#refreshStatusButton"),
         serverStatus: document.querySelector("#serverStatus"),
         serverChip: document.querySelector("#serverChip"),
+        googleStatus: document.querySelector("#googleStatus"),
+        connectGoogleButton: document.querySelector("#connectGoogleButton"),
         planCalendarStatus: document.querySelector("#planCalendarStatus"),
         actualCalendarStatus: document.querySelector("#actualCalendarStatus"),
         pendingSyncStatus: document.querySelector("#pendingSyncStatus"),
@@ -948,6 +949,7 @@
         renderCaptureButtons(els.quickGrid);
         setDefaultTimes();
         bindEvents();
+        initGoogleClient();
         render();
         drainPersistentSyncQueue();
         refreshStatus();
@@ -970,6 +972,7 @@
         els.syncSetupPlanButton.addEventListener("click", syncPlan);
         els.copyMemoryButton.addEventListener("click", copyWeeklyMemory);
         els.refreshStatusButton.addEventListener("click", refreshStatus);
+        els.connectGoogleButton.addEventListener("click", connectGoogle);
         els.resetButton.addEventListener("click", resetLocalData);
         els.retryAllButton.addEventListener("click", drainPersistentSyncQueue);
         els.retryPendingButton.addEventListener("click", retryRecovery);
@@ -1188,6 +1191,10 @@
       }
 
       async function drainPersistentSyncQueue() {
+        if (!googleAccessToken) {
+          render();
+          return;
+        }
         if (persistentSyncInFlight) return;
         cleanupPersistentSyncQueue();
         if (!state.syncQueue.length) {
@@ -1348,6 +1355,14 @@
 
       async function refreshStatus() {
         if (refreshInFlight) return;
+        if (!googleAccessToken) {
+          bootstrapReady = true;
+          els.serverStatus.textContent = "Connect Google to sync";
+          els.serverChip.textContent = "Offline";
+          els.serverChip.className = "status-chip warn";
+          render();
+          return;
+        }
         refreshInFlight = true;
         els.serverStatus.textContent = "Checking...";
         els.serverChip.textContent = "Checking";
@@ -1879,6 +1894,7 @@
         state.plan = [];
         state.actual = [];
         state.active = null;
+        state.google = defaultGoogleState();
         state.syncQueue = [];
         state.actionLog = [];
         state.lastError = "";
@@ -1914,43 +1930,258 @@
         state.syncQueue = Array.isArray(state.syncQueue) ? state.syncQueue : [];
         state.actionLog = Array.isArray(state.actionLog) ? state.actionLog : [];
         state.lastError = state.lastError || "";
+        state.google = { ...defaultGoogleState(), ...(state.google || {}) };
         cleanupPersistentSyncQueue();
         saveState();
       }
 
-      function runServer(functionName, ...args) {
-        return new Promise((resolve, reject) => {
-          const requestId = crypto.randomUUID();
-          let settled = false;
-          const timer = window.setTimeout(() => {
-            if (settled) return;
-            settled = true;
-            const request = pagesBridgeRequests.get(requestId);
-            if (request) request.frame.remove();
-            pagesBridgeRequests.delete(requestId);
-            reject(new Error("GCal sync timed out. Tap Check or Retry."));
-          }, serverTimeoutMs);
-          const frame = document.createElement("iframe");
-          frame.title = "TimeBlock backend";
-          frame.setAttribute("aria-hidden", "true");
-          frame.style.cssText = "position:fixed;width:1px;height:1px;left:-10px;bottom:-10px;border:0;opacity:0;pointer-events:none;";
-          pagesBridgeRequests.set(requestId, {
-            frame,
-            timer,
-            resolve: (result) => {
-              if (settled) return;
-              settled = true;
-              resolve(result);
-            },
-            reject: (error) => {
-              if (settled) return;
-              settled = true;
-              reject(error);
-            },
+      function initGoogleClient() {
+        renderGoogleState();
+        waitForGoogleIdentity().then(() => {
+          tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: googleClientId,
+            scope: googleScopes,
+            callback: handleGoogleToken,
+            error_callback: () => renderGoogleStatus("GCal authorization failed"),
           });
-          frame.src = `${pagesBridgeUrl}&requestId=${encodeURIComponent(requestId)}&functionName=${encodeURIComponent(functionName)}&args=${encodeURIComponent(JSON.stringify(args))}`;
-          document.body.append(frame);
+          renderGoogleState();
+        }).catch(() => renderGoogleStatus("Google authorization unavailable"));
+      }
+
+      function waitForGoogleIdentity() {
+        return new Promise((resolve, reject) => {
+          let attempts = 0;
+          const timer = window.setInterval(() => {
+            attempts += 1;
+            if (window.google?.accounts?.oauth2) {
+              window.clearInterval(timer);
+              resolve();
+            } else if (attempts > 80) {
+              window.clearInterval(timer);
+              reject(new Error("Google Identity Services did not load"));
+            }
+          }, 100);
         });
+      }
+
+      function connectGoogle() {
+        if (!tokenClient) {
+          renderGoogleStatus("Google authorization unavailable");
+          return;
+        }
+        tokenClient.requestAccessToken({ prompt: googleAccessToken ? "" : "consent" });
+      }
+
+      async function handleGoogleToken(response) {
+        if (response.error) {
+          renderGoogleStatus("GCal authorization failed");
+          return;
+        }
+        googleAccessToken = response.access_token;
+        googleTokenExpiresAt = Date.now() + Number(response.expires_in || 3600) * 1000;
+        try {
+          await refreshGoogleCalendars();
+          renderGoogleStatus("Connected");
+          await refreshStatus();
+          drainPersistentSyncQueue();
+        } catch (error) {
+          renderGoogleStatus(readableError(error));
+          showRecovery(readableError(error), "Google Calendar connection failed");
+        }
+      }
+
+      async function refreshGoogleCalendars() {
+        const data = await gcalFetch("/users/me/calendarList");
+        const calendars = data.items || [];
+        const byName = new Map(calendars.map((calendar) => [calendar.summary, calendar]));
+        state.google.planCalendarIds = Object.fromEntries(
+          categories.map((category) => [category.id, byName.get(category.code)?.id || ""]),
+        );
+        const actual = calendars.find((calendar) => ["Actual-Time Log", "Actual - Time Log"].includes(calendar.summary));
+        state.google.actualCalendarId = actual?.id || "";
+        state.google.actualCalendarName = actual?.summary || "";
+        applyCalendarStatus({
+          plan: categories.map((category) => ({ id: category.id, code: category.code, found: Boolean(state.google.planCalendarIds[category.id]) })),
+          planFoundCount: Object.values(state.google.planCalendarIds).filter(Boolean).length,
+          actualFound: Boolean(actual),
+          actualName: actual?.summary || "Actual-Time Log",
+        });
+        saveState();
+        renderGoogleState();
+      }
+
+      async function getDirectBootstrapState() {
+        await ensureGoogleReady();
+        const events = await getDirectCalendarEvents(state.google.actualCalendarId, startOfWeek(new Date()), addDays(startOfWeek(new Date()), 7));
+        const actual = events
+          .filter((event) => event.extendedProperties?.private?.status !== "active")
+          .map(serializeDirectActualEvent)
+          .filter(Boolean);
+        const activeEvent = events.find((event) => event.extendedProperties?.private?.status === "active");
+        const active = activeEvent ? serializeDirectActiveEvent(activeEvent) : null;
+        return { actual, active, calendars: state.calendars, serverTime: new Date().toISOString() };
+      }
+
+      async function getDirectPlanState() {
+        await ensureGoogleReady();
+        const start = startOfWeek(new Date());
+        const end = addDays(start, 7);
+        const results = await Promise.all(categories.map(async (category) => {
+          const calendarId = state.google.planCalendarIds[category.id];
+          return { category, events: calendarId ? await getDirectCalendarEvents(calendarId, start, end) : [] };
+        }));
+        const blocks = [];
+        results.forEach(({ category, events }) => {
+          events.filter((event) => event.start?.dateTime && event.end?.dateTime).forEach((event) => {
+            blocks.push({
+              id: `gcal-plan-${category.id}-${event.id}`,
+              categoryId: category.id,
+              note: event.summary || "",
+              start: event.start.dateTime,
+              end: event.end.dateTime,
+              source: "gcal-plan",
+              googleEventId: event.id,
+            });
+          });
+        });
+        return { blocks: blocks.sort((a, b) => new Date(a.start) - new Date(b.start)), calendars: state.calendars };
+      }
+
+      async function createDirectActualBlock(block) {
+        await ensureGoogleReady();
+        const result = block.googleEventId
+          ? await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events/${encodeURIComponent(block.googleEventId)}`, { method: "PATCH", body: JSON.stringify(actualEventPayload(block)) })
+          : await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events`, { method: "POST", body: JSON.stringify(actualEventPayload(block)) });
+        return { block: serializeDirectActualEvent(result, block), calendars: state.calendars, active: state.active };
+      }
+
+      async function updateDirectActualBlock(block) {
+        return createDirectActualBlock(block);
+      }
+
+      async function startDirectActiveBlock(block) {
+        await ensureGoogleReady();
+        const start = new Date(block.start);
+        const end = addMinutes(start, 360);
+        const payload = {
+          summary: `Active: ${categoryShortLabel(block.categoryId)}`,
+          description: block.note || "Active block from TimeBlock Reality",
+          start: { dateTime: start.toISOString(), timeZone: "Asia/Bangkok" },
+          end: { dateTime: end.toISOString(), timeZone: "Asia/Bangkok" },
+          extendedProperties: { private: { ld8: block.categoryId, source: "timeblock-reality", status: "active", blockId: block.id } },
+        };
+        const result = block.googleEventId
+          ? await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events/${encodeURIComponent(block.googleEventId)}`, { method: "PATCH", body: JSON.stringify(payload) })
+          : await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events`, { method: "POST", body: JSON.stringify(payload) });
+        return { active: serializeDirectActiveEvent(result, block), calendars: state.calendars };
+      }
+
+      async function getDirectCalendarEvents(calendarId, start, end) {
+        const params = new URLSearchParams({
+          timeMin: start.toISOString(),
+          timeMax: end.toISOString(),
+          singleEvents: "true",
+          showDeleted: "false",
+          orderBy: "startTime",
+        });
+        const events = [];
+        let pageToken = "";
+        do {
+          if (pageToken) params.set("pageToken", pageToken);
+          const data = await gcalFetch(`/calendars/${encodeURIComponent(calendarId)}/events?${params}`);
+          events.push(...(data.items || []));
+          pageToken = data.nextPageToken || "";
+        } while (pageToken);
+        return events;
+      }
+
+      function serializeDirectActualEvent(event, fallback = {}) {
+        if (!event?.start?.dateTime || !event?.end?.dateTime) return null;
+        const privateData = event.extendedProperties?.private || {};
+        const categoryId = privateData.ld8 || inferCategoryId(event.summary || "");
+        return {
+          id: privateData.blockId || fallback.id || `gcal-actual-${event.id}`,
+          categoryId,
+          note: event.description || fallback.note || "",
+          start: event.start.dateTime,
+          end: event.end.dateTime,
+          googleEventId: event.id,
+          source: "timeblock-reality",
+          syncStatus: "synced",
+        };
+      }
+
+      function serializeDirectActiveEvent(event, fallback = {}) {
+        const privateData = event.extendedProperties?.private || {};
+        return {
+          id: privateData.blockId || fallback.id || `gcal-active-${event.id}`,
+          categoryId: privateData.ld8 || fallback.categoryId || inferCategoryId(event.summary || ""),
+          note: event.description || fallback.note || "",
+          start: event.start.dateTime,
+          googleEventId: event.id,
+          status: "active",
+        };
+      }
+
+      function actualEventPayload(block) {
+        return {
+          summary: `Actual: ${categoryShortLabel(block.categoryId)}`,
+          description: block.note || "Logged from TimeBlock Reality",
+          start: { dateTime: block.start, timeZone: "Asia/Bangkok" },
+          end: { dateTime: block.end, timeZone: "Asia/Bangkok" },
+          extendedProperties: { private: { ld8: block.categoryId, source: "timeblock-reality", status: "actual", blockId: block.id } },
+        };
+      }
+
+      async function ensureGoogleReady() {
+        if (!googleAccessToken || Date.now() > googleTokenExpiresAt - 60000) {
+          throw new Error("Connect Google Calendar in More first.");
+        }
+        if (!state.google.actualCalendarId || !Object.values(state.google.planCalendarIds || {}).some(Boolean)) {
+          await refreshGoogleCalendars();
+        }
+        if (!state.google.actualCalendarId) throw new Error("Missing Actual-Time Log calendar.");
+      }
+
+      async function gcalFetch(path, options = {}) {
+        const response = await fetch(`https://www.googleapis.com/calendar/v3${path}`, {
+          ...options,
+          headers: { Authorization: `Bearer ${googleAccessToken}`, "Content-Type": "application/json", ...(options.headers || {}) },
+        });
+        if (!response.ok) throw new Error(`Google Calendar API failed: ${response.status}`);
+        return response.json();
+      }
+
+      function inferCategoryId(text) {
+        const normalized = String(text).toLowerCase();
+        return categories.find((category) => normalized.includes(category.code.toLowerCase()) || normalized.includes(category.name.toLowerCase()))?.id || "mm";
+      }
+
+      function renderGoogleStatus(status) {
+        els.googleStatus.textContent = status;
+        els.serverStatus.textContent = status;
+        els.serverChip.textContent = googleAccessToken ? "Connected" : "Offline";
+        els.serverChip.className = googleAccessToken ? "status-chip" : "status-chip warn";
+      }
+
+      function renderGoogleState() {
+        els.connectGoogleButton.disabled = !tokenClient;
+        els.googleStatus.textContent = googleAccessToken ? "Connected" : "Not connected";
+      }
+
+      function defaultGoogleState() {
+        return { planCalendarIds: {}, actualCalendarId: "", actualCalendarName: "" };
+      }
+
+      function runServer(functionName, ...args) {
+        switch (functionName) {
+          case "getBootstrapState": return getDirectBootstrapState();
+          case "syncPlanWeek": return getDirectPlanState();
+          case "createActualBlock": return createDirectActualBlock(args[0]);
+          case "updateActualBlock": return updateDirectActualBlock(args[0]);
+          case "startActiveBlock": return startDirectActiveBlock(args[0]);
+          default: return Promise.reject(new Error(`Unsupported client action: ${functionName}`));
+        }
       }
 
       function readableError(error) {
@@ -1974,6 +2205,7 @@
             actual: Array.isArray(saved.actual) ? saved.actual : [],
             active: saved.active || null,
             calendars: saved.calendars || null,
+            google: { ...defaultGoogleState(), ...(saved.google || {}) },
             syncQueue: Array.isArray(saved.syncQueue) ? saved.syncQueue : [],
             actionLog: Array.isArray(saved.actionLog) ? saved.actionLog : [],
             lastError: saved.lastError || "",
@@ -1984,6 +2216,7 @@
             actual: [],
             active: null,
             calendars: null,
+            google: defaultGoogleState(),
             syncQueue: [],
             actionLog: [{ at: new Date().toISOString(), message: "local cache parse failed" }],
             lastError: "Local cache could not be read. Reset cache if the app keeps failing.",
