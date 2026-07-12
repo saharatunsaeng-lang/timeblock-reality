@@ -850,7 +850,7 @@
       ];
 
       const storageKey = "timeblock-reality-apps-script-v1";
-      const serverTimeoutMs = 25000;
+      const serverTimeoutMs = 10000;
       const state = loadState();
       let refreshInFlight = false;
       let bootstrapReady = hasUsableLocalState(state);
@@ -971,7 +971,7 @@
         els.refreshStatusButton.addEventListener("click", refreshStatus);
         els.resetButton.addEventListener("click", resetLocalData);
         els.retryAllButton.addEventListener("click", drainPersistentSyncQueue);
-        els.retryPendingButton.addEventListener("click", drainPersistentSyncQueue);
+        els.retryPendingButton.addEventListener("click", retryRecovery);
         els.reloadAppButton.addEventListener("click", () => window.location.reload());
         els.resetRecoveryButton.addEventListener("click", resetLocalData);
         document.addEventListener("visibilitychange", handleVisibilityResume);
@@ -1364,6 +1364,8 @@
           els.serverStatus.textContent = readableError(error);
           els.serverChip.textContent = "Issue";
           els.serverChip.className = "status-chip bad";
+          bootstrapReady = true;
+          showRecovery("GCal is taking too long. Capture is available locally and will retry sync later.", "Offline capture mode");
         } finally {
           refreshInFlight = false;
           render();
@@ -1816,7 +1818,13 @@
         els.recoveryCard.classList.toggle("is-visible", shouldShow);
         els.recoveryTitle.textContent = lastError ? "App issue detected" : "Pending GCal sync";
         els.recoveryMessage.textContent = lastError || `${pending} block${pending > 1 ? "s" : ""} waiting to sync to GCal.`;
-        els.retryPendingButton.disabled = persistentSyncInFlight || !pending;
+        els.retryPendingButton.textContent = pending ? "Retry sync" : "Retry connection";
+        els.retryPendingButton.disabled = persistentSyncInFlight || refreshInFlight;
+      }
+
+      function retryRecovery() {
+        if (state.syncQueue?.length) drainPersistentSyncQueue();
+        else refreshStatus();
       }
 
       function getBlockSyncState(block) {

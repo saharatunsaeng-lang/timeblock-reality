@@ -1,4 +1,4 @@
-const cacheName = "timeblock-reality-v9-pages-bridge";
+const cacheName = "timeblock-reality-v10-offline-capture";
 const assets = [
   "./?v=20260712-pages-bridge",
   "index.html?v=20260712-pages-bridge",
