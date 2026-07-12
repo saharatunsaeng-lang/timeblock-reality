@@ -17,12 +17,16 @@ Mobile-first companion for an LD8 calendar time blocking workflow:
 - `7 CT - Contribute`
 - `8 LS - Lifestyle`
 
-The recommended runtime is now the Google Apps Script web app in `apps-script/`. GitHub Pages was useful for the first prototype, but frontend-only OAuth is not stable enough for daily iPhone capture.
+The recommended runtime is now the GitHub Pages frontend with the Google Apps Script backend bridge. The frontend is a standalone PWA, so it does not show the Apps Script banner; Calendar authorization and sync remain server-side.
 
 ## Runtime
 
-- Recommended: Google Apps Script Web App.
-- Legacy prototype: GitHub Pages frontend OAuth.
+- Recommended: GitHub Pages frontend + Apps Script backend bridge.
+- Backend-only fallback: Google Apps Script Web App.
+
+GitHub Pages app:
+
+- <https://saharatunsaeng-lang.github.io/timeblock-reality/>
 
 Production web app:
 
@@ -38,6 +42,7 @@ Required Google Calendar names:
 Runtime behavior:
 
 - Apps Script is authorized once with the user's Google account.
+- GitHub Pages sends server calls through a hidden one-shot Apps Script bridge; no Calendar OAuth token is stored in the browser.
 - `Sync Plan` imports the current week from the 8 LD8 calendars.
 - New actual blocks are written server-side to `Actual-Time Log`.
 - No recurring `Connect GCal` step is needed in normal use.

@@ -1,10 +1,8 @@
-const cacheName = "timeblock-reality-v8";
+const cacheName = "timeblock-reality-v9-pages-bridge";
 const assets = [
-  "./?v=20260702-sync-status",
-  "index.html?v=20260702-sync-status",
-  "styles.css?v=20260702-sync-status",
-  "app.js?v=20260702-sync-status",
-  "manifest.webmanifest?v=20260702-sync-status",
+  "./?v=20260712-pages-bridge",
+  "index.html?v=20260712-pages-bridge",
+  "manifest.webmanifest?v=20260712-pages-bridge",
   "icon.svg",
 ];
 

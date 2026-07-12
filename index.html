@@ -3,183 +3,2106 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#f7f3ea" />
+    <meta name="theme-color" content="#f2eee6" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260712-pages-bridge" />
     <title>TimeBlock Reality</title>
-    <link rel="manifest" href="manifest.webmanifest?v=20260702-sync-status" />
-    <link rel="stylesheet" href="styles.css?v=20260702-sync-status" />
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f2eee6;
+        --surface: #fffdfa;
+        --surface-strong: #ffffff;
+        --ink: #20201c;
+        --muted: #726c61;
+        --line: #d9d0c2;
+        --accent: #166f61;
+        --accent-soft: #e6f1ed;
+        --blue: #315f8c;
+        --blue-soft: #e9f0f8;
+        --amber: #ab7027;
+        --amber-soft: #f6ebdb;
+        --danger: #9b4741;
+        --danger-soft: #f5e8e6;
+        --shadow: 0 16px 46px rgba(35, 30, 20, 0.1);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      button {
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .app-shell {
+        position: relative;
+        width: min(100vw, 760px);
+        min-height: 100dvh;
+        margin: 0 auto;
+        padding: max(16px, env(safe-area-inset-top)) 14px calc(88px + env(safe-area-inset-bottom));
+      }
+
+      .app-header,
+      .now-card,
+      .last-card,
+      .section-heading,
+      .timeline-row,
+      .metric-card,
+      .setting-row,
+      .sheet-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .app-header {
+        margin-bottom: 14px;
+      }
+
+      .brand,
+      .label,
+      .block-time,
+      .small-status {
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 900;
+        text-transform: uppercase;
+      }
+
+      .brand {
+        letter-spacing: 0.03em;
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin: 0;
+        line-height: 1.02;
+      }
+
+      h1 {
+        margin-top: 2px;
+        font-size: 2rem;
+      }
+
+      h2 {
+        font-size: 1.14rem;
+      }
+
+      h3 {
+        font-size: 1rem;
+      }
+
+      .date-label {
+        color: var(--muted);
+        font-size: 0.8rem;
+        font-weight: 850;
+      }
+
+      .round-button,
+      .end-button,
+      .secondary-button,
+      .danger-button,
+      .nav-button,
+      .domain-button,
+      .primary-button {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface-strong);
+        color: var(--ink);
+        cursor: pointer;
+        font-weight: 900;
+      }
+
+      .round-button {
+        width: 38px;
+        height: 38px;
+        border-radius: 999px;
+      }
+
+      .end-button {
+        min-width: 68px;
+        min-height: 42px;
+        border: 0;
+        background: var(--ink);
+        color: #fff;
+      }
+
+      .primary-button {
+        width: 100%;
+        min-height: 46px;
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #fff;
+      }
+
+      .secondary-button,
+      .danger-button {
+        min-height: 36px;
+        padding: 0 11px;
+        font-size: 0.82rem;
+      }
+
+      .danger-button {
+        border-color: rgba(155, 71, 65, 0.35);
+        color: var(--danger);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
+
+      .now-card,
+      .last-card,
+      .timeline-card,
+      .review-card,
+      .settings-card,
+      .form-card,
+      .status-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        box-shadow: var(--shadow);
+      }
+
+      .now-card {
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+
+      .now-card strong,
+      .last-card strong,
+      .setting-row strong {
+        display: block;
+        margin-top: 3px;
+      }
+
+      .domain-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 9px;
+      }
+
+      .domain-button {
+        min-width: 0;
+        min-height: 68px;
+        font-size: 1.36rem;
+        background: var(--surface-strong);
+      }
+
+      .domain-button.active {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #fff;
+      }
+
+      .domain-button.compact {
+        min-height: 42px;
+        font-size: 0.96rem;
+      }
+
+      .last-card {
+        margin-top: 12px;
+        padding: 11px;
+        background: var(--accent-soft);
+      }
+
+      .last-card.has-error {
+        background: var(--danger-soft);
+      }
+
+      .last-card.is-syncing {
+        background: var(--amber-soft);
+      }
+
+      .recovery-card {
+        display: none;
+        gap: 10px;
+        margin-bottom: 12px;
+        border-color: rgba(155, 71, 65, 0.35);
+        background: var(--danger-soft);
+        padding: 12px;
+      }
+
+      .recovery-card.is-visible {
+        display: grid;
+      }
+
+      .recovery-card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.84rem;
+        font-weight: 750;
+      }
+
+      .button-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .status-chip {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        margin-top: 6px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: #23564e;
+        padding: 0 8px;
+        font-size: 0.7rem;
+        font-weight: 900;
+      }
+
+      .status-chip.warn {
+        background: var(--amber-soft);
+        color: #704a1d;
+      }
+
+      .status-chip.bad {
+        background: var(--danger-soft);
+        color: var(--danger);
+      }
+
+      .panel {
+        display: none;
+      }
+
+      .panel.is-active {
+        display: block;
+      }
+
+      .section-heading {
+        margin: 18px 0 10px;
+      }
+
+      .timeline-card,
+      .review-card,
+      .settings-card,
+      .form-card,
+      .status-card {
+        padding: 12px;
+      }
+
+      .timeline-list,
+      .review-list,
+      .settings-list,
+      .log-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .timeline-row {
+        align-items: stretch;
+      }
+
+      .timeline-row time {
+        width: 42px;
+        padding-top: 8px;
+        color: var(--muted);
+        font-size: 0.7rem;
+        font-weight: 900;
+      }
+
+      .time-block {
+        flex: 1;
+        min-height: 42px;
+        border-left: 4px solid var(--accent);
+        border-radius: 8px;
+        background: var(--accent-soft);
+        padding: 8px;
+      }
+
+      button.time-block {
+        width: 100%;
+        color: var(--ink);
+        text-align: left;
+      }
+
+      button.time-block:active {
+        background: #d8eae4;
+      }
+
+      .block-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .edit-hint {
+        color: var(--accent);
+        font-size: 0.7rem;
+        font-weight: 900;
+      }
+
+      .time-block.plan {
+        border-color: var(--blue);
+        background: var(--blue-soft);
+      }
+
+      .block-title,
+      .block-time {
+        display: block;
+      }
+
+      .block-title {
+        font-weight: 900;
+      }
+
+      .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+
+      .daily-summary {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+
+      .metric-card {
+        min-height: 66px;
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 10px;
+      }
+
+      .metric-card strong {
+        font-size: 1.28rem;
+      }
+
+      .insight-card {
+        border: 1px solid var(--line);
+        border-left: 4px solid var(--amber);
+        border-radius: 8px;
+        background: var(--amber-soft);
+        padding: 10px;
+      }
+
+      .insight-card strong,
+      .insight-card span {
+        display: block;
+      }
+
+      .insight-card span {
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 0.82rem;
+        font-weight: 760;
+      }
+
+      .review-item {
+        display: grid;
+        gap: 6px;
+      }
+
+      .daily-domain-list {
+        display: grid;
+        gap: 7px;
+      }
+
+      .daily-domain-row {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface-strong);
+        padding: 9px;
+      }
+
+      .memory-box {
+        width: 100%;
+        min-height: 220px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface-strong);
+        color: var(--ink);
+        padding: 10px;
+        font: 0.78rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        resize: vertical;
+      }
+
+      .review-item-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 0.86rem;
+        font-weight: 900;
+      }
+
+      .bar {
+        height: 10px;
+        border-radius: 999px;
+        background: #ebe3d7;
+        overflow: hidden;
+      }
+
+      .bar span {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: var(--accent);
+      }
+
+      .setting-row {
+        min-height: 48px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface-strong);
+        padding: 9px;
+      }
+
+      .form-card {
+        display: grid;
+        gap: 10px;
+        box-shadow: none;
+      }
+
+      .sheet-form {
+        display: grid;
+        gap: 14px;
+        padding-top: 14px;
+      }
+
+      .sheet-form label {
+        min-width: 0;
+      }
+
+      .sheet-form input,
+      .sheet-form select {
+        min-width: 0;
+        min-height: 48px;
+        font-size: 1rem;
+      }
+
+      .sheet-form .primary-button {
+        min-height: 52px;
+        margin-top: 2px;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 0.78rem;
+        font-weight: 900;
+      }
+
+      input,
+      select {
+        width: 100%;
+        min-height: 42px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface-strong);
+        color: var(--ink);
+        padding: 0 10px;
+        font-weight: 850;
+      }
+
+      .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .form-row > * {
+        min-width: 0;
+      }
+
+      .empty-state {
+        display: grid;
+        place-items: center;
+        min-height: 170px;
+        border: 1px dashed #cfc3b4;
+        border-radius: 8px;
+        background: rgba(255, 253, 250, 0.6);
+        text-align: center;
+        padding: 18px;
+      }
+
+      .empty-state strong {
+        display: block;
+        margin-bottom: 8px;
+      }
+
+      .empty-state span {
+        color: var(--muted);
+        font-size: 0.84rem;
+        font-weight: 680;
+      }
+
+      .bottom-nav {
+        position: fixed;
+        left: max(14px, env(safe-area-inset-left));
+        right: max(14px, env(safe-area-inset-right));
+        bottom: max(12px, env(safe-area-inset-bottom));
+        z-index: 20;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 7px;
+        width: min(calc(100vw - 28px), 732px);
+        margin: 0 auto;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: rgba(255, 253, 250, 0.95);
+        padding: 6px;
+        box-shadow: 0 12px 30px rgba(35, 30, 20, 0.12);
+      }
+
+      .nav-button {
+        min-height: 40px;
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+
+      .nav-button.is-active {
+        background: var(--ink);
+        color: #fff;
+      }
+
+      .sheet-scrim {
+        position: fixed;
+        inset: 0;
+        z-index: 30;
+        background: rgba(30, 28, 22, 0.25);
+      }
+
+      .sheet {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 40;
+        width: min(100vw, 760px);
+        margin: 0 auto;
+        border-top: 1px solid var(--line);
+        border-radius: 20px 20px 0 0;
+        background: var(--surface);
+        box-shadow: 0 -18px 34px rgba(28, 25, 18, 0.16);
+        padding: 14px 14px max(14px, env(safe-area-inset-bottom));
+        max-height: 88dvh;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+      }
+
+      .sheet::before {
+        content: "";
+        display: block;
+        width: 42px;
+        height: 4px;
+        margin: -3px auto 12px;
+        border-radius: 999px;
+        background: var(--line);
+      }
+
+      .sheet-head {
+        align-items: flex-start;
+      }
+
+      .sheet-head strong {
+        display: block;
+        margin-top: 3px;
+        font-size: 1.2rem;
+      }
+
+      .sheet .round-button {
+        flex: 0 0 auto;
+        border: 0;
+        background: transparent;
+        font-size: 1.35rem;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      @media (min-width: 680px) {
+        .app-shell {
+          padding-top: 28px;
+        }
+
+        .domain-grid {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+      }
+    </style>
   </head>
   <body>
     <main class="app-shell">
-      <header class="topbar">
+      <header class="app-header">
         <div>
-          <p class="eyebrow">Plan vs Actual</p>
-          <h1>TimeBlock Reality</h1>
+          <p class="brand" id="viewEyebrow">TimeBlock</p>
+          <h1 id="viewTitle">Reality</h1>
         </div>
-        <button class="icon-button" id="installButton" hidden title="Install app" aria-label="Install app">+</button>
+        <div class="date-label" id="todayLabel"></div>
       </header>
 
-      <section class="status-strip" aria-label="Current block">
+      <section class="status-card recovery-card" id="recoveryCard" aria-label="App recovery">
         <div>
-          <span class="label">Now</span>
-          <strong id="activeTitle">No active block</strong>
+          <span class="label">Recovery</span>
+          <strong id="recoveryTitle">App issue detected</strong>
+          <p id="recoveryMessage">Reload or retry pending sync.</p>
         </div>
-        <button id="endBlockButton" class="secondary-button" disabled>End</button>
+        <div class="button-row">
+          <button id="retryPendingButton" class="secondary-button" type="button">Retry sync</button>
+          <button id="reloadAppButton" class="secondary-button" type="button">Reload</button>
+          <button id="resetRecoveryButton" class="danger-button" type="button">Reset cache</button>
+        </div>
       </section>
 
-      <nav class="tabs" aria-label="Primary">
-        <button class="tab is-active" data-tab="capture">Capture</button>
-        <button class="tab" data-tab="today">Today</button>
-        <button class="tab" data-tab="review">Review</button>
-        <button class="tab" data-tab="settings">Setup</button>
-      </nav>
+      <section class="panel is-active" id="capturePanel">
+        <section class="now-card" aria-label="Current block">
+          <div>
+            <span class="label">Now</span>
+            <strong id="activeTitle">No active block</strong>
+            <span class="block-time" id="activeMeta"></span>
+          </div>
+          <button id="endBlockButton" class="end-button" disabled>End</button>
+        </section>
 
-      <section class="panel is-active" id="capturePanel" aria-labelledby="captureHeading">
-        <div class="section-heading">
-          <h2 id="captureHeading">LD8 Capture</h2>
-          <span id="todayLabel"></span>
-        </div>
+        <div class="domain-grid" id="quickGrid"></div>
 
-        <div class="quick-grid" id="quickGrid"></div>
-
-        <section class="last-block-strip" aria-label="Last actual block">
+        <section class="last-card" id="lastBlockCard" aria-label="Last actual block">
           <div>
             <span class="label">Last</span>
             <strong id="lastBlockTitle">No actual yet</strong>
-            <small id="lastSyncStatus">Not synced</small>
+            <span class="status-chip warn" id="lastSyncStatus">Not synced</span>
           </div>
-          <div class="last-actions">
-            <button id="syncLastButton" class="secondary-button" type="button" disabled>Sync</button>
+          <div>
+            <button id="syncLastButton" class="secondary-button" type="button" disabled>Retry</button>
             <button id="fixLastButton" class="secondary-button" type="button" disabled>Fix</button>
           </div>
         </section>
-
-        <form class="entry-form compact" id="fixLastForm" hidden>
-          <label>
-            LD8
-            <select id="manualCategory"></select>
-          </label>
-          <div class="form-row">
-            <label>
-              Start
-              <input id="manualStart" type="time" required />
-            </label>
-            <label>
-              End
-              <input id="manualEnd" type="time" required />
-            </label>
-          </div>
-          <label>
-            Note
-            <input id="manualNote" type="text" placeholder="optional" />
-          </label>
-          <button class="primary-button" type="submit">Save fix</button>
-        </form>
       </section>
 
-      <section class="panel" id="todayPanel" aria-labelledby="todayHeading">
+      <section class="panel" id="todayPanel">
         <div class="section-heading">
-          <h2 id="todayHeading">Today</h2>
-          <button id="addPlanButton" class="secondary-button">Add plan</button>
+          <h2>Daily Review</h2>
+          <button id="syncPlanButton" class="secondary-button">Sync Plan</button>
         </div>
-
-        <form class="entry-form compact" id="planForm" hidden>
-          <label>
-            LD8
-            <select id="planCategory"></select>
-          </label>
-          <div class="form-row">
-            <label>
-              Start
-              <input id="planStart" type="time" required />
-            </label>
-            <label>
-              End
-              <input id="planEnd" type="time" required />
-            </label>
-          </div>
-          <button class="primary-button" type="submit">Save plan</button>
-        </form>
-
-        <div class="timeline-columns">
-          <section>
-            <div class="mini-heading">Plan</div>
-            <div class="block-list" id="planList"></div>
-          </section>
-          <section>
-            <div class="mini-heading">Actual</div>
-            <div class="block-list" id="actualList"></div>
-          </section>
+        <section class="daily-summary" aria-label="Daily review">
+          <div class="metrics-grid" id="todaySummaryGrid"></div>
+          <div class="insight-card" id="todayInsight"></div>
+          <div class="daily-domain-list" id="todayDomainRows"></div>
+        </section>
+        <div class="section-heading">
+          <h2>Timeline</h2>
         </div>
+        <section class="timeline-card">
+          <div class="timeline-list" id="todayList"></div>
+        </section>
       </section>
 
-      <section class="panel" id="reviewPanel" aria-labelledby="reviewHeading">
+      <section class="panel" id="morePanel">
         <div class="section-heading">
-          <h2 id="reviewHeading">Weekly Review</h2>
-          <button id="exportButton" class="secondary-button">Export</button>
+          <h2>Weekly Review</h2>
+          <button id="syncReviewButton" class="secondary-button">Sync Plan</button>
         </div>
-
         <div class="metrics-grid" id="metricsGrid"></div>
-        <div class="review-table-wrap">
-          <table class="review-table">
-            <thead>
-              <tr>
-                <th>Category</th>
-                <th>Plan</th>
-                <th>Actual</th>
-                <th>Delta</th>
-              </tr>
-            </thead>
-            <tbody id="reviewRows"></tbody>
-          </table>
-        </div>
-        <textarea id="exportText" class="export-box" readonly hidden></textarea>
-      </section>
+        <div class="insight-card" id="weeklyInsight"></div>
+        <section class="review-card">
+          <div class="review-list" id="reviewRows"></div>
+        </section>
 
-      <section class="panel" id="settingsPanel" aria-labelledby="settingsHeading">
         <div class="section-heading">
-          <h2 id="settingsHeading">Setup</h2>
-          <button id="resetButton" class="danger-button">Reset local data</button>
+          <h2>Habit Signals</h2>
         </div>
+        <section class="review-card">
+          <div class="daily-domain-list" id="habitRows"></div>
+        </section>
 
-        <div class="setup-list">
-          <div class="setup-actions">
-            <button id="connectGoogleButton" class="primary-button" type="button">Connect GCal</button>
-            <button id="syncPlanButton" class="secondary-button" type="button" disabled>Sync Plan</button>
-          </div>
-          <div>
-            <span class="label">GCal status</span>
-            <strong id="googleStatus">Not connected</strong>
-          </div>
-          <div>
-            <span class="label">Plan source</span>
-            <strong id="planCalendarStatus">LD8 calendars</strong>
-          </div>
-          <div>
-            <span class="label">Actual calendar</span>
-            <strong id="actualCalendarStatus">Actual-Time Log</strong>
-          </div>
-          <div>
-            <span class="label">Storage</span>
-            <strong>Local device first</strong>
-          </div>
+        <div class="section-heading">
+          <h2>Memory Handoff</h2>
+          <button id="copyMemoryButton" class="secondary-button" type="button">Copy</button>
         </div>
+        <section class="settings-card">
+          <div class="setting-row">
+            <div>
+              <span class="label">Weekly memory</span>
+              <strong>LD8 plan vs actual summary</strong>
+            </div>
+            <span class="status-chip" id="memoryStatus">Ready</span>
+          </div>
+          <textarea id="memoryText" class="memory-box" readonly hidden></textarea>
+        </section>
+
+        <div class="section-heading">
+          <h2>Calendar</h2>
+          <button id="refreshStatusButton" class="secondary-button" type="button">Check</button>
+        </div>
+        <section class="settings-card">
+          <div class="settings-list">
+            <div class="setting-row">
+              <div>
+                <span class="label">Server</span>
+                <strong id="serverStatus">Loading...</strong>
+              </div>
+              <span class="status-chip" id="serverChip">Ready</span>
+            </div>
+            <div class="setting-row">
+              <div>
+                <span class="label">Plan source</span>
+                <strong id="planCalendarStatus">LD8 calendars</strong>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div>
+                <span class="label">Actual calendar</span>
+                <strong id="actualCalendarStatus">Actual-Time Log</strong>
+              </div>
+            </div>
+            <div class="setting-row">
+              <strong>Sync today</strong>
+              <button id="syncSetupPlanButton" class="secondary-button" type="button">Run</button>
+            </div>
+            <div class="setting-row">
+              <strong>Reset local cache</strong>
+              <button id="resetButton" class="danger-button" type="button">Reset</button>
+            </div>
+            <div class="setting-row">
+              <div>
+                <span class="label">Pending sync</span>
+                <strong id="pendingSyncStatus">0 waiting</strong>
+              </div>
+              <button id="retryAllButton" class="secondary-button" type="button">Retry</button>
+            </div>
+            <div class="setting-row">
+              <div>
+                <span class="label">Last app event</span>
+                <strong id="lastLogStatus">No log yet</strong>
+              </div>
+            </div>
+          </div>
+        </section>
       </section>
     </main>
 
-    <template id="blockTemplate">
-      <article class="time-block">
-        <div>
-          <strong class="block-title"></strong>
-          <span class="block-time"></span>
-        </div>
-        <div class="block-actions">
-          <a class="calendar-link" target="_blank" rel="noreferrer">GCal</a>
-          <button class="delete-button" type="button">Delete</button>
-        </div>
-      </article>
-    </template>
+    <nav class="bottom-nav" aria-label="Primary">
+      <button class="nav-button is-active" data-tab="capture">Capture</button>
+      <button class="nav-button" data-tab="today">Today</button>
+      <button class="nav-button" data-tab="more">More</button>
+    </nav>
 
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="app.js?v=20260702-sync-status" type="module"></script>
+    <div class="sheet-scrim" id="fixSheetScrim" hidden></div>
+    <section class="sheet" id="fixSheet" role="dialog" aria-modal="true" aria-labelledby="fixSheetTitle" hidden>
+      <div class="sheet-head">
+        <div>
+          <span class="label">Edit actual</span>
+          <strong id="fixSheetTitle">No actual yet</strong>
+        </div>
+        <button class="round-button" id="closeFixSheetButton" type="button" aria-label="Close edit sheet">&#215;</button>
+      </div>
+      <form class="sheet-form" id="fixLastForm">
+        <label>
+          Domain
+          <select id="manualCategory"></select>
+        </label>
+        <div class="form-row">
+          <label>
+            Start
+            <input id="manualStart" type="time" required />
+          </label>
+          <label>
+            End
+            <input id="manualEnd" type="time" required />
+          </label>
+        </div>
+        <label>
+          Note
+          <input id="manualNote" type="text" placeholder="optional" />
+        </label>
+        <button class="primary-button" type="submit">Save changes</button>
+      </form>
+    </section>
+
+    <script>
+      const categories = [
+        { id: "bd", code: "1 BD", name: "Body & Diet" },
+        { id: "sp", code: "2 SP", name: "Spiritual & Purpose" },
+        { id: "mm", code: "3 MM", name: "Mind & Memory" },
+        { id: "rs", code: "4 RS", name: "Relationships & Social" },
+        { id: "cm", code: "5 CM", name: "Career & Money" },
+        { id: "fn", code: "6 FN", name: "Finance & Numbers" },
+        { id: "ct", code: "7 CT", name: "Contribute" },
+        { id: "ls", code: "8 LS", name: "Lifestyle" },
+      ];
+
+      const storageKey = "timeblock-reality-apps-script-v1";
+      const serverTimeoutMs = 25000;
+      const state = loadState();
+      let refreshInFlight = false;
+      let bootstrapReady = hasUsableLocalState(state);
+      let operationInFlight = false;
+      let localActionInFlight = false;
+      let pendingSyncCount = 0;
+      let syncChain = Promise.resolve();
+      let persistentSyncInFlight = false;
+      let fixTargetBlockId = "";
+      const pagesBridgeUrl = "https://script.google.com/macros/s/AKfycbzhzb2xT22srpiT_cN8zy8UaR7QKAvfOut_HRwXyt-Xur-3TsSPpiCo0Vk2kWvLN8lIag/exec?mode=bridge";
+      const pagesBridgeRequests = new Map();
+
+      window.addEventListener("message", (event) => {
+        const data = event.data;
+        if (!data || data.source !== "timeblock-bridge") return;
+        const request = pagesBridgeRequests.get(data.requestId);
+        if (!request) return;
+        pagesBridgeRequests.delete(data.requestId);
+        window.clearTimeout(request.timer);
+        request.frame.remove();
+        if (data.ok) request.resolve(data.result);
+        else request.reject(new Error(data.error?.message || "GCal bridge error"));
+      });
+
+      const els = {
+        viewEyebrow: document.querySelector("#viewEyebrow"),
+        viewTitle: document.querySelector("#viewTitle"),
+        activeTitle: document.querySelector("#activeTitle"),
+        activeMeta: document.querySelector("#activeMeta"),
+        endBlockButton: document.querySelector("#endBlockButton"),
+        quickGrid: document.querySelector("#quickGrid"),
+        fixSheet: document.querySelector("#fixSheet"),
+        fixSheetScrim: document.querySelector("#fixSheetScrim"),
+        fixSheetTitle: document.querySelector("#fixSheetTitle"),
+        closeFixSheetButton: document.querySelector("#closeFixSheetButton"),
+        fixLastForm: document.querySelector("#fixLastForm"),
+        fixLastButton: document.querySelector("#fixLastButton"),
+        syncLastButton: document.querySelector("#syncLastButton"),
+        lastBlockCard: document.querySelector("#lastBlockCard"),
+        lastBlockTitle: document.querySelector("#lastBlockTitle"),
+        lastSyncStatus: document.querySelector("#lastSyncStatus"),
+        manualCategory: document.querySelector("#manualCategory"),
+        manualStart: document.querySelector("#manualStart"),
+        manualEnd: document.querySelector("#manualEnd"),
+        manualNote: document.querySelector("#manualNote"),
+        todayLabel: document.querySelector("#todayLabel"),
+        todaySummaryGrid: document.querySelector("#todaySummaryGrid"),
+        todayInsight: document.querySelector("#todayInsight"),
+        todayDomainRows: document.querySelector("#todayDomainRows"),
+        todayList: document.querySelector("#todayList"),
+        metricsGrid: document.querySelector("#metricsGrid"),
+        weeklyInsight: document.querySelector("#weeklyInsight"),
+        reviewRows: document.querySelector("#reviewRows"),
+        habitRows: document.querySelector("#habitRows"),
+        copyMemoryButton: document.querySelector("#copyMemoryButton"),
+        memoryStatus: document.querySelector("#memoryStatus"),
+        memoryText: document.querySelector("#memoryText"),
+        syncPlanButton: document.querySelector("#syncPlanButton"),
+        syncReviewButton: document.querySelector("#syncReviewButton"),
+        syncSetupPlanButton: document.querySelector("#syncSetupPlanButton"),
+        resetButton: document.querySelector("#resetButton"),
+        refreshStatusButton: document.querySelector("#refreshStatusButton"),
+        serverStatus: document.querySelector("#serverStatus"),
+        serverChip: document.querySelector("#serverChip"),
+        planCalendarStatus: document.querySelector("#planCalendarStatus"),
+        actualCalendarStatus: document.querySelector("#actualCalendarStatus"),
+        pendingSyncStatus: document.querySelector("#pendingSyncStatus"),
+        retryAllButton: document.querySelector("#retryAllButton"),
+        lastLogStatus: document.querySelector("#lastLogStatus"),
+        recoveryCard: document.querySelector("#recoveryCard"),
+        recoveryTitle: document.querySelector("#recoveryTitle"),
+        recoveryMessage: document.querySelector("#recoveryMessage"),
+        retryPendingButton: document.querySelector("#retryPendingButton"),
+        reloadAppButton: document.querySelector("#reloadAppButton"),
+        resetRecoveryButton: document.querySelector("#resetRecoveryButton"),
+      };
+
+      window.addEventListener("error", (event) => showRecovery(`App error: ${event.message || "Unknown error"}`));
+      window.addEventListener("unhandledrejection", (event) => {
+        const reason = event.reason?.message || String(event.reason || "Unknown promise error");
+        showRecovery(`App error: ${reason}`);
+      });
+
+      try {
+        init();
+      } catch (error) {
+        showRecovery(readableError(error));
+      }
+
+      function init() {
+        normalizeLoadedState();
+        logAction("open app");
+        fillSelect(els.manualCategory);
+        renderCaptureButtons(els.quickGrid);
+        setDefaultTimes();
+        bindEvents();
+        render();
+        drainPersistentSyncQueue();
+        refreshStatus();
+        setInterval(renderActive, 60 * 1000);
+        if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+      }
+
+      function bindEvents() {
+        document.querySelectorAll(".nav-button").forEach((tab) => {
+          tab.addEventListener("click", () => activateTab(tab.dataset.tab));
+        });
+        els.endBlockButton.addEventListener("click", () => endActiveBlock());
+        els.fixLastButton.addEventListener("click", () => openFixSheet());
+        els.syncLastButton.addEventListener("click", retrySyncLastBlock);
+        els.closeFixSheetButton.addEventListener("click", closeFixSheet);
+        els.fixSheetScrim.addEventListener("click", closeFixSheet);
+        els.fixLastForm.addEventListener("submit", fixLastBlock);
+        els.syncPlanButton.addEventListener("click", syncPlan);
+        els.syncReviewButton.addEventListener("click", syncPlan);
+        els.syncSetupPlanButton.addEventListener("click", syncPlan);
+        els.copyMemoryButton.addEventListener("click", copyWeeklyMemory);
+        els.refreshStatusButton.addEventListener("click", refreshStatus);
+        els.resetButton.addEventListener("click", resetLocalData);
+        els.retryAllButton.addEventListener("click", drainPersistentSyncQueue);
+        els.retryPendingButton.addEventListener("click", drainPersistentSyncQueue);
+        els.reloadAppButton.addEventListener("click", () => window.location.reload());
+        els.resetRecoveryButton.addEventListener("click", resetLocalData);
+        document.addEventListener("visibilitychange", handleVisibilityResume);
+      }
+
+      function activateTab(tabName) {
+        const titles = {
+          capture: ["TimeBlock", "Reality"],
+          today: ["Today", "Plan vs Actual"],
+          more: ["More", "Tools"],
+        };
+        document.querySelectorAll(".nav-button").forEach((tab) => {
+          tab.classList.toggle("is-active", tab.dataset.tab === tabName);
+        });
+        document.querySelectorAll(".panel").forEach((panel) => {
+          panel.classList.toggle("is-active", panel.id === `${tabName}Panel`);
+        });
+        els.viewEyebrow.textContent = titles[tabName][0];
+        els.viewTitle.textContent = titles[tabName][1];
+      }
+
+      function renderCaptureButtons(container, compact = false) {
+        container.innerHTML = "";
+        categories.forEach((category) => {
+          const button = document.createElement("button");
+          button.className = `domain-button${compact ? " compact" : ""}`;
+          button.type = "button";
+          button.textContent = compact ? category.code.replace(" ", "\n") : category.code;
+          button.title = category.name;
+          button.addEventListener("click", () => startQuickBlock(category.id));
+          container.append(button);
+        });
+      }
+
+      function fillSelect(select) {
+        select.innerHTML = "";
+        categories.forEach((category) => {
+          const option = document.createElement("option");
+          option.value = category.id;
+          option.textContent = category.code;
+          select.append(option);
+        });
+      }
+
+      function setDefaultTimes() {
+        const now = new Date();
+        els.todayLabel.textContent = now.toLocaleDateString("en-US", {
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+        });
+        els.manualStart.value = toTimeInput(roundDate(now, 15));
+        els.manualEnd.value = toTimeInput(addMinutes(roundDate(now, 15), 30));
+      }
+
+      function startQuickBlock(categoryId) {
+        if (isCaptureLocked()) return;
+        localActionInFlight = true;
+        activateTab("capture");
+        try {
+          logAction(`start ${categoryShortLabel(categoryId)}`);
+          const endedBlock = finishActiveBlockLocally();
+          state.active = {
+            id: crypto.randomUUID(),
+            categoryId,
+            start: new Date().toISOString(),
+          };
+          saveState();
+          render();
+          if (endedBlock) queueActualSync(endedBlock);
+          queueActiveSync(state.active);
+        } catch (error) {
+          updateSyncStatus(readableError(error), true);
+        } finally {
+          localActionInFlight = false;
+          render();
+        }
+      }
+
+      function endActiveBlock(shouldRender = true) {
+        if (isCaptureLocked()) return;
+        localActionInFlight = true;
+        try {
+          logAction("end active");
+          const block = finishActiveBlockLocally();
+          if (!block) return;
+          queueActualSync(block);
+          if (shouldRender) render();
+        } finally {
+          localActionInFlight = false;
+          render();
+        }
+      }
+
+      function finishActiveBlockLocally() {
+        if (!state.active) return null;
+        const end = new Date();
+        const start = new Date(state.active.start);
+        if (end.getTime() - start.getTime() < 60 * 1000) {
+          end.setMinutes(end.getMinutes() + 5);
+        }
+        const block = {
+          id: state.active.id,
+          categoryId: state.active.categoryId,
+          note: "",
+          start: state.active.start,
+          end: end.toISOString(),
+          googleEventId: state.active.googleEventId || "",
+          syncStatus: "pending",
+          syncError: "",
+          updatedAt: new Date().toISOString(),
+        };
+        state.actual.push(block);
+        state.active = null;
+        saveState();
+        return block;
+      }
+
+      function queueActualSync(block) {
+        if (!block) return;
+        markBlockSync(block, "pending");
+        addPersistentSyncTask(block);
+        drainPersistentSyncQueue();
+      }
+
+      function queueActiveSync(activeBlock) {
+        enqueueSync("Starting in GCal...", async () => {
+          try {
+            const result = await runServer("startActiveBlock", activeBlock);
+            if (result.active && state.active?.id === result.active.id) state.active = result.active;
+            if (result.calendars) applyCalendarStatus(result.calendars);
+            saveState();
+          } catch (error) {
+            updateSyncStatus(readableError(error), true);
+          }
+        });
+      }
+
+      function enqueueSync(status, task) {
+        pendingSyncCount += 1;
+        updateSyncStatus(status);
+        render();
+        syncChain = syncChain
+          .catch(() => {})
+          .then(task)
+          .finally(() => {
+            pendingSyncCount = Math.max(0, pendingSyncCount - 1);
+            if (!pendingSyncCount) {
+              els.serverStatus.textContent = "Ready";
+              els.serverChip.textContent = "Ready";
+              els.serverChip.className = "status-chip";
+            }
+            render();
+          });
+        return syncChain;
+      }
+
+      async function syncActualBlock(block) {
+        if (!block) return false;
+        updateSyncStatus("Saving to GCal...");
+        markBlockSync(block, "syncing");
+        try {
+          const result = await runServer("createActualBlock", block);
+          Object.assign(block, result.block);
+          markBlockSync(block, "synced");
+          if (result.calendars) applyCalendarStatus(result.calendars);
+          saveState();
+          logAction(`synced ${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)}`);
+          updateSyncStatus("Saved to GCal");
+          return true;
+        } catch (error) {
+          const message = readableError(error);
+          markBlockSync(block, "error", message);
+          logAction(`sync failed: ${message}`);
+          showRecovery(message, "GCal sync failed");
+          updateSyncStatus(message, true);
+          return false;
+        }
+      }
+
+      async function updateActualBlock(block) {
+        if (operationInFlight) return;
+        operationInFlight = true;
+        render();
+        updateSyncStatus("Fixing in GCal...");
+        markBlockSync(block, "syncing");
+        try {
+          const result = await runServer("updateActualBlock", block);
+          Object.assign(block, result.block);
+          markBlockSync(block, "synced");
+          if ("active" in result) state.active = result.active;
+          if (result.calendars) applyCalendarStatus(result.calendars);
+          saveState();
+          logAction(`fixed ${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)}`);
+          updateSyncStatus("Fixed in GCal");
+        } catch (error) {
+          const message = readableError(error);
+          markBlockSync(block, "error", message);
+          addPersistentSyncTask(block);
+          showRecovery(message, "Fix sync failed");
+          updateSyncStatus(message, true);
+        } finally {
+          operationInFlight = false;
+        }
+        render();
+      }
+
+      async function retrySyncLastBlock() {
+        if (operationInFlight) return;
+        const block = getLastActualBlock();
+        if (!block) return;
+        queueActualSync(block);
+      }
+
+      async function drainPersistentSyncQueue() {
+        if (persistentSyncInFlight) return;
+        cleanupPersistentSyncQueue();
+        if (!state.syncQueue.length) {
+          render();
+          return;
+        }
+
+        persistentSyncInFlight = true;
+        pendingSyncCount = state.syncQueue.length;
+        updateSyncStatus(`Syncing ${pendingSyncCount} pending...`);
+        render();
+
+        try {
+          while (state.syncQueue.length) {
+            const task = state.syncQueue[0];
+            const block = state.actual.find((item) => item.id === task.blockId);
+            if (!block || block.syncStatus === "synced") {
+              state.syncQueue.shift();
+              saveState();
+              continue;
+            }
+
+            const ok = await syncActualBlock(block);
+            if (!ok) break;
+            state.syncQueue.shift();
+            saveState();
+            pendingSyncCount = state.syncQueue.length;
+            render();
+          }
+        } finally {
+          persistentSyncInFlight = false;
+          pendingSyncCount = state.syncQueue.length;
+          if (state.syncQueue.length) {
+            updateSyncStatus(`${state.syncQueue.length} unsynced`, true);
+          } else {
+            state.lastError = "";
+            saveState();
+            els.serverStatus.textContent = "Ready";
+            els.serverChip.textContent = "Ready";
+            els.serverChip.className = "status-chip";
+          }
+          render();
+        }
+      }
+
+      function addPersistentSyncTask(block) {
+        cleanupPersistentSyncQueue();
+        const exists = state.syncQueue.some((task) => task.type === "actual" && task.blockId === block.id);
+        if (!exists && block.syncStatus !== "synced") {
+          state.syncQueue.push({
+            id: crypto.randomUUID(),
+            type: "actual",
+            blockId: block.id,
+            createdAt: new Date().toISOString(),
+          });
+          logAction(`queued ${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)}`);
+        }
+        saveState();
+      }
+
+      function cleanupPersistentSyncQueue() {
+        const seen = new Set();
+        state.syncQueue = state.syncQueue.filter((task) => {
+          if (!task || task.type !== "actual" || !task.blockId || seen.has(task.blockId)) return false;
+          seen.add(task.blockId);
+          const block = state.actual.find((item) => item.id === task.blockId);
+          return Boolean(block && block.syncStatus !== "synced");
+        });
+        state.actual.forEach((block) => {
+          if (!block.syncStatus) markBlockSync(block, block.googleEventId ? "synced" : "pending", "", false);
+          if (block.syncStatus !== "synced" && !seen.has(block.id)) {
+            state.syncQueue.push({
+              id: crypto.randomUUID(),
+              type: "actual",
+              blockId: block.id,
+              createdAt: block.updatedAt || new Date().toISOString(),
+            });
+            seen.add(block.id);
+          }
+        });
+      }
+
+      function markBlockSync(block, status, error = "", shouldSave = true) {
+        block.syncStatus = status;
+        block.syncError = error || "";
+        block.updatedAt = new Date().toISOString();
+        if (status === "synced") {
+          block.syncedAt = new Date().toISOString();
+        }
+        if (shouldSave) saveState();
+      }
+
+      function openFixSheet(blockId = "") {
+        if (operationInFlight) return;
+        const block = state.actual.find((item) => item.id === blockId) || getLastActualBlock();
+        if (!block) return;
+        fixTargetBlockId = block.id;
+        populateFixLastForm(block);
+        els.fixSheet.hidden = false;
+        els.fixSheetScrim.hidden = false;
+        document.body.style.overflow = "hidden";
+      }
+
+      function closeFixSheet() {
+        els.fixSheet.hidden = true;
+        els.fixSheetScrim.hidden = true;
+        document.body.style.overflow = "";
+      }
+
+      function populateFixLastForm(block) {
+        els.fixSheetTitle.textContent = `${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)}`;
+        els.manualCategory.value = block.categoryId;
+        els.manualStart.value = toTimeInput(new Date(block.start));
+        els.manualEnd.value = toTimeInput(new Date(block.end));
+        els.manualNote.value = block.note || "";
+      }
+
+      function fixLastBlock(event) {
+        event.preventDefault();
+        const block = state.actual.find((item) => item.id === fixTargetBlockId);
+        if (!block) return;
+        const fixed = buildBlockFromForm(els.manualCategory.value, els.manualStart.value, els.manualEnd.value, els.manualNote.value);
+        block.categoryId = fixed.categoryId;
+        block.note = fixed.note;
+        block.start = fixed.start;
+        block.end = fixed.end;
+        saveState();
+        closeFixSheet();
+        queueActualSync(block);
+        render();
+      }
+
+      async function syncPlan() {
+        if (operationInFlight) return;
+        operationInFlight = true;
+        render();
+        els.serverStatus.textContent = "Syncing plan...";
+        els.serverChip.textContent = "Syncing";
+        els.serverChip.className = "status-chip warn";
+        try {
+          const result = await runServer("syncPlanWeek");
+          state.plan = result.blocks || [];
+          if (result.calendars) applyCalendarStatus(result.calendars);
+          saveState();
+          render();
+          els.serverStatus.textContent = `Synced ${state.plan.length} plan`;
+          els.serverChip.textContent = "Ready";
+          els.serverChip.className = "status-chip";
+        } catch (error) {
+          els.serverStatus.textContent = readableError(error);
+          els.serverChip.textContent = "Issue";
+          els.serverChip.className = "status-chip bad";
+        } finally {
+          operationInFlight = false;
+          render();
+        }
+      }
+
+      async function refreshStatus() {
+        if (refreshInFlight) return;
+        refreshInFlight = true;
+        els.serverStatus.textContent = "Checking...";
+        els.serverChip.textContent = "Checking";
+        els.serverChip.className = "status-chip warn";
+        render();
+        try {
+          const result = await runServer("getBootstrapState");
+          applyBootstrapState(result);
+          bootstrapReady = true;
+          els.serverStatus.textContent = "Ready";
+          els.serverChip.textContent = "Ready";
+          els.serverChip.className = "status-chip";
+        } catch (error) {
+          bootstrapReady = hasUsableLocalState(state);
+          els.serverStatus.textContent = readableError(error);
+          els.serverChip.textContent = "Issue";
+          els.serverChip.className = "status-chip bad";
+        } finally {
+          refreshInFlight = false;
+          render();
+        }
+      }
+
+      function handleVisibilityResume() {
+        if (document.hidden) return;
+        logAction("resume app");
+        setDefaultTimes();
+        renderActive();
+        drainPersistentSyncQueue();
+        refreshStatus();
+      }
+
+      function applyBootstrapState(result) {
+        if (!result) return;
+        if (Array.isArray(result.plan)) state.plan = result.plan;
+        if (Array.isArray(result.actual)) state.actual = mergeBlocks(state.actual, result.actual);
+        if ("active" in result && !pendingSyncCount && !localActionInFlight) state.active = result.active;
+        if (result.calendars) applyCalendarStatus(result.calendars);
+        saveState();
+        render();
+      }
+
+      function mergeBlocks(localBlocks, serverBlocks) {
+        const merged = [];
+        const keys = new Set();
+        const ids = new Set();
+        const pendingLocal = localBlocks.filter((block) => block.syncStatus && block.syncStatus !== "synced");
+        const stableLocal = localBlocks.filter((block) => !block.syncStatus || block.syncStatus === "synced");
+        [...pendingLocal, ...serverBlocks, ...stableLocal].forEach((block) => {
+          if (block.id && ids.has(block.id)) return;
+          const key = block.googleEventId ? `gcal:${block.googleEventId}` : `local:${block.id}`;
+          if (keys.has(key)) return;
+          keys.add(key);
+          if (block.id) ids.add(block.id);
+          merged.push(block);
+        });
+        return merged.sort((a, b) => new Date(a.start) - new Date(b.start));
+      }
+
+      function buildBlockFromForm(categoryId, startTime, endTime, note) {
+        const day = todayDateKey();
+        const start = fromDateAndTime(day, startTime);
+        let end = fromDateAndTime(day, endTime);
+        if (end <= start) end = addMinutes(start, 30);
+        return {
+          id: crypto.randomUUID(),
+          categoryId,
+          note: note.trim(),
+          start: start.toISOString(),
+          end: end.toISOString(),
+        };
+      }
+
+      function render() {
+        renderRecovery();
+        renderActive();
+        renderLastBlock();
+        renderToday();
+        renderReview();
+        renderSyncDiagnostics();
+        renderControlLocks();
+      }
+
+      function renderActive() {
+        const locked = isCaptureLocked();
+        if (!state.active) {
+          els.activeTitle.textContent = bootstrapReady ? "No active block" : "Syncing with GCal";
+          els.activeMeta.textContent = bootstrapReady ? "" : "Loading current state...";
+          els.endBlockButton.disabled = true;
+        } else {
+          els.activeTitle.textContent = `${categoryShortLabel(state.active.categoryId)} ${formatTime(state.active.start)}`;
+          const syncText = pendingSyncCount ? " · syncing" : "";
+          els.activeMeta.textContent = `Running ${formatHours(minutesBetween(state.active.start, new Date().toISOString()))}${syncText}`;
+          els.endBlockButton.disabled = locked;
+        }
+        [...els.quickGrid.querySelectorAll("button")].forEach((button) => {
+          const category = categories.find((item) => button.title === item.name);
+          button.classList.toggle("active", state.active?.categoryId === category?.id);
+          button.disabled = locked;
+        });
+      }
+
+      function renderLastBlock() {
+        const block = getLastActualBlock();
+        const locked = isCaptureLocked();
+        els.lastBlockCard.classList.remove("has-error");
+        els.lastBlockCard.classList.remove("is-syncing");
+        if (!block) {
+          els.lastBlockTitle.textContent = "No actual yet";
+          els.lastSyncStatus.textContent = "Not synced";
+          els.lastSyncStatus.className = "status-chip warn";
+          els.fixLastButton.disabled = true;
+          els.syncLastButton.disabled = true;
+          closeFixSheet();
+          return;
+        }
+        els.lastBlockTitle.textContent = `${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)}`;
+        const syncState = getBlockSyncState(block);
+        els.lastSyncStatus.textContent = syncState.label;
+        els.lastSyncStatus.className = `status-chip ${syncState.className}`;
+        els.lastBlockCard.classList.toggle("has-error", syncState.isError);
+        els.lastBlockCard.classList.toggle("is-syncing", syncState.isSyncing);
+        els.fixLastButton.disabled = locked;
+        els.syncLastButton.disabled = locked || syncState.isSynced || syncState.isSyncing;
+      }
+
+      function renderToday() {
+        const day = todayDateKey();
+        const planBlocks = state.plan.filter((block) => dateKey(block.start) === day);
+        const actualBlocks = state.actual.filter((block) => dateKey(block.start) === day);
+        const items = [...planBlocks, ...actualBlocks]
+          .sort((a, b) => new Date(a.start) - new Date(b.start));
+
+        renderDailySummary(planBlocks, actualBlocks);
+
+        els.todayList.innerHTML = "";
+        if (!items.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty-state";
+          empty.innerHTML = "<div><strong>No blocks today</strong><span>Capture from the main page or sync your LD8 plan.</span></div>";
+          els.todayList.append(empty);
+          return;
+        }
+        items.forEach((block) => {
+          const row = document.createElement("article");
+          row.className = "timeline-row";
+          const type = block.source === "gcal-plan" ? "Plan" : "Actual";
+          const blockClass = type === "Plan" ? "time-block plan" : "time-block";
+          const content = `<span class="block-heading"><strong class="block-title">${type}: ${categoryShortLabel(block.categoryId)}</strong>${type === "Actual" ? '<span class="edit-hint">Edit</span>' : ""}</span><span class="block-time">${formatTime(block.start)}-${formatTime(block.end)} · ${minutesBetween(block.start, block.end)}m</span>`;
+          row.innerHTML = `<time>${formatTime(block.start)}</time>`;
+          if (type === "Actual") {
+            const editButton = document.createElement("button");
+            editButton.className = blockClass;
+            editButton.type = "button";
+            editButton.setAttribute("aria-label", `Edit ${categoryShortLabel(block.categoryId)} ${formatTime(block.start)} to ${formatTime(block.end)}`);
+            editButton.innerHTML = content;
+            editButton.addEventListener("click", () => openFixSheet(block.id));
+            row.append(editButton);
+          } else {
+            const plan = document.createElement("div");
+            plan.className = blockClass;
+            plan.innerHTML = content;
+            row.append(plan);
+          }
+          els.todayList.append(row);
+        });
+      }
+
+      function renderDailySummary(planBlocks, actualBlocks) {
+        const planMinutes = sumBlockMinutes(planBlocks);
+        const actualMinutes = sumBlockMinutes(actualBlocks);
+        const matchedMinutes = matchedPlanActualMinutes(planBlocks, actualBlocks);
+        const missedMinutes = Math.max(0, planMinutes - matchedMinutes);
+        const unplannedMinutes = Math.max(0, actualMinutes - matchedMinutes);
+        const activeMinutes = state.active && dateKey(state.active.start) === todayDateKey()
+          ? minutesBetween(state.active.start, new Date().toISOString())
+          : 0;
+        const nextPlan = getNextPlanBlock(planBlocks);
+        const match = planMinutes ? Math.round((matchedMinutes / planMinutes) * 100) : 0;
+
+        els.todaySummaryGrid.innerHTML = "";
+        [
+          ["Plan", formatHours(planMinutes)],
+          ["Actual", formatHours(actualMinutes)],
+          ["Match", `${match}%`],
+          ["Drift", formatSignedHours(actualMinutes - planMinutes)],
+        ].forEach(([label, value]) => {
+          const card = document.createElement("div");
+          card.className = "metric-card";
+          card.innerHTML = `<span class="label">${label}</span><strong>${value}</strong>`;
+          els.todaySummaryGrid.append(card);
+        });
+
+        els.todayInsight.innerHTML = buildDailyInsight({
+          activeMinutes,
+          actualMinutes,
+          missedMinutes,
+          nextPlan,
+          planMinutes,
+          unplannedMinutes,
+        });
+        renderDailyDomainRows(planBlocks, actualBlocks);
+      }
+
+      function buildDailyInsight(summary) {
+        if (state.active && summary.activeMinutes) {
+          return `<strong>Now: ${categoryShortLabel(state.active.categoryId)} ${formatTime(state.active.start)}</strong><span>Running ${formatHours(summary.activeMinutes)} so far. End it when the block is actually done.</span>`;
+        }
+        if (!summary.planMinutes && !summary.actualMinutes) {
+          return "<strong>No signal yet</strong><span>Sync your LD8 plan or capture the first actual block.</span>";
+        }
+        if (summary.actualMinutes && !summary.planMinutes) {
+          return `<strong>Actual without plan</strong><span>You captured ${formatHours(summary.actualMinutes)} today without a planned baseline.</span>`;
+        }
+        if (summary.missedMinutes > summary.unplannedMinutes && summary.missedMinutes >= 30) {
+          return `<strong>Plan is ahead</strong><span>${formatHours(summary.missedMinutes)} planned time has not appeared in actual capture yet.</span>`;
+        }
+        if (summary.unplannedMinutes >= 30) {
+          return `<strong>Reality drift</strong><span>${formatHours(summary.unplannedMinutes)} happened outside the matched LD8 plan.</span>`;
+        }
+        if (summary.nextPlan) {
+          return `<strong>Next plan: ${categoryShortLabel(summary.nextPlan.categoryId)} ${formatTime(summary.nextPlan.start)}</strong><span>${escapeHtml(summary.nextPlan.note || "Use Capture when the real block starts.")}</span>`;
+        }
+        return "<strong>Day is aligned enough</strong><span>Plan and actual are close. Keep capturing the real blocks.</span>";
+      }
+
+      function renderDailyDomainRows(planBlocks, actualBlocks) {
+        els.todayDomainRows.innerHTML = "";
+        const rows = categories
+          .map((category) => {
+            const planned = sumBlockMinutes(planBlocks.filter((block) => block.categoryId === category.id));
+            const actual = sumBlockMinutes(actualBlocks.filter((block) => block.categoryId === category.id));
+            return { category, planned, actual };
+          })
+          .filter((row) => row.planned || row.actual);
+
+        if (!rows.length) {
+          els.todayDomainRows.innerHTML = '<div class="empty-state"><div><strong>No LD8 rows yet</strong><span>Today summary will fill in after plan sync or capture.</span></div></div>';
+          return;
+        }
+
+        rows.forEach(({ category, planned, actual }) => {
+          const row = document.createElement("div");
+          row.className = "daily-domain-row";
+          const max = Math.max(planned, actual, 1);
+          const width = Math.max(6, Math.round((actual / max) * 100));
+          row.innerHTML = `<div class="review-item-header"><span>${category.code}</span><span>${formatHours(planned)} / ${formatHours(actual)} · ${formatSignedHours(actual - planned)}</span></div><div class="bar"><span style="width: ${width}%"></span></div>`;
+          els.todayDomainRows.append(row);
+        });
+      }
+
+      function renderReview() {
+        const start = startOfWeek(new Date());
+        const end = addDays(start, 7);
+        const planBlocks = blocksInRange(state.plan, start, end);
+        const actualBlocks = blocksInRange(state.actual, start, end);
+        const planMinutes = sumBlockMinutes(planBlocks);
+        const actualMinutes = sumBlockMinutes(actualBlocks);
+        const matchedMinutes = matchedPlanActualMinutes(planBlocks, actualBlocks);
+        const adherence = planMinutes ? Math.round((matchedMinutes / planMinutes) * 100) : 0;
+        const driftMinutes = actualMinutes - planMinutes;
+        els.metricsGrid.innerHTML = "";
+        [
+          ["Plan", formatHours(planMinutes)],
+          ["Actual", formatHours(actualMinutes)],
+          ["Match", `${adherence}%`],
+          ["Drift", formatSignedHours(driftMinutes)],
+        ].forEach(([label, value]) => {
+          const card = document.createElement("div");
+          card.className = "metric-card";
+          card.innerHTML = `<span class="label">${label}</span><strong>${value}</strong>`;
+          els.metricsGrid.append(card);
+        });
+
+        els.reviewRows.innerHTML = "";
+        const rows = categories
+          .map((category) => {
+            const planned = sumBlockMinutes(planBlocks.filter((block) => block.categoryId === category.id));
+            const actual = sumBlockMinutes(actualBlocks.filter((block) => block.categoryId === category.id));
+            return { category, planned, actual, drift: actual - planned };
+          })
+          .filter((row) => row.planned || row.actual)
+          .sort((a, b) => Math.abs(b.drift) - Math.abs(a.drift));
+
+        els.weeklyInsight.innerHTML = buildWeeklyInsight({
+          actualMinutes,
+          driftMinutes,
+          planMinutes,
+          rows,
+        });
+
+        if (!rows.length) {
+          els.reviewRows.innerHTML = '<div class="empty-state"><div><strong>No weekly data</strong><span>Capture actual blocks or sync your LD8 plan.</span></div></div>';
+          renderHabitSignals(planBlocks, actualBlocks, rows, start, end);
+          return;
+        }
+
+        rows.forEach(({ category, planned, actual, drift }) => {
+          const item = document.createElement("div");
+          item.className = "review-item";
+          const max = Math.max(planned, actual, 1);
+          const width = Math.max(6, Math.round((actual / max) * 100));
+          item.innerHTML = `<div class="review-item-header"><span>${category.code}</span><span>${formatHours(planned)} / ${formatHours(actual)} · ${formatSignedHours(drift)}</span></div><div class="bar"><span style="width: ${width}%"></span></div>`;
+          els.reviewRows.append(item);
+        });
+        renderHabitSignals(planBlocks, actualBlocks, rows, start, end);
+      }
+
+      function buildWeeklyInsight(summary) {
+        if (!summary.planMinutes && !summary.actualMinutes) {
+          return "<strong>No weekly signal yet</strong><span>Sync your LD8 plan or capture actual blocks to see weekly drift.</span>";
+        }
+
+        const biggest = summary.rows[0];
+        if (biggest && Math.abs(biggest.drift) >= 60) {
+          const direction = biggest.drift > 0 ? "more actual time than planned" : "less actual time than planned";
+          return `<strong>Largest weekly drift: ${biggest.category.code}</strong><span>${formatSignedHours(biggest.drift)} ${direction}. Review whether this is intentional.</span>`;
+        }
+
+        if (summary.driftMinutes > 0) {
+          return `<strong>Actual is above plan</strong><span>${formatSignedHours(summary.driftMinutes)} more captured time than planned this week.</span>`;
+        }
+
+        if (summary.driftMinutes < 0) {
+          return `<strong>Plan is ahead of reality</strong><span>${formatSignedHours(summary.driftMinutes)} against plan this week. Check missed or uncaptured blocks.</span>`;
+        }
+
+        return "<strong>Week is balanced</strong><span>Planned and actual time are close enough. Use the LD8 rows to inspect distribution.</span>";
+      }
+
+      function renderHabitSignals(planBlocks, actualBlocks, rows, start, end) {
+        const elapsedDays = elapsedWeekDays(start, end);
+        const capturedDays = new Set(actualBlocks.map((block) => dateKey(block.start))).size;
+        const topActual = rows
+          .filter((row) => row.actual > 0)
+          .sort((a, b) => b.actual - a.actual)[0];
+        const biggestGap = rows
+          .filter((row) => row.planned > 0 && row.drift < 0)
+          .sort((a, b) => a.drift - b.drift)[0];
+        const signals = [
+          {
+            label: "Capture habit",
+            value: `${capturedDays}/${elapsedDays} days`,
+            detail: capturedDays
+              ? "Actual blocks are being captured often enough to start seeing behavior."
+              : "No actual capture yet this week.",
+          },
+          {
+            label: "Dominant reality",
+            value: topActual ? `${topActual.category.code} ${formatHours(topActual.actual)}` : "-",
+            detail: topActual
+              ? "This is where real time is currently concentrating."
+              : "Capture more actual blocks to identify the dominant domain.",
+          },
+          {
+            label: "Plan pressure",
+            value: biggestGap ? `${biggestGap.category.code} ${formatSignedHours(biggestGap.drift)}` : "Stable",
+            detail: biggestGap
+              ? "This planned domain is furthest behind actual behavior."
+              : "No major under-captured planned domain yet.",
+          },
+        ];
+
+        els.habitRows.innerHTML = "";
+        signals.forEach((signal) => {
+          const row = document.createElement("div");
+          row.className = "daily-domain-row";
+          row.innerHTML = `<div class="review-item-header"><span>${signal.label}</span><span>${signal.value}</span></div><div class="block-time">${signal.detail}</div>`;
+          els.habitRows.append(row);
+        });
+      }
+
+      async function copyWeeklyMemory() {
+        const text = buildWeeklyMemoryText();
+        els.memoryText.value = text;
+        els.memoryText.hidden = false;
+        let copied = false;
+
+        try {
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+            copied = true;
+          }
+        } catch (error) {
+          copied = false;
+        }
+
+        if (!copied) {
+          copied = fallbackCopyText(els.memoryText);
+        }
+
+        els.memoryStatus.textContent = copied ? "Copied" : "Shown";
+        els.memoryStatus.className = copied ? "status-chip" : "status-chip warn";
+      }
+
+      function buildWeeklyMemoryText() {
+        const start = startOfWeek(new Date());
+        const end = addDays(start, 7);
+        const planBlocks = blocksInRange(state.plan, start, end);
+        const actualBlocks = blocksInRange(state.actual, start, end);
+        const planMinutes = sumBlockMinutes(planBlocks);
+        const actualMinutes = sumBlockMinutes(actualBlocks);
+        const matchedMinutes = matchedPlanActualMinutes(planBlocks, actualBlocks);
+        const match = planMinutes ? Math.round((matchedMinutes / planMinutes) * 100) : 0;
+        const rows = categories
+          .map((category) => {
+            const planned = sumBlockMinutes(planBlocks.filter((block) => block.categoryId === category.id));
+            const actual = sumBlockMinutes(actualBlocks.filter((block) => block.categoryId === category.id));
+            return { category, planned, actual, drift: actual - planned };
+          })
+          .filter((row) => row.planned || row.actual)
+          .sort((a, b) => Math.abs(b.drift) - Math.abs(a.drift));
+        const capturedDays = new Set(actualBlocks.map((block) => dateKey(block.start))).size;
+        const elapsedDays = elapsedWeekDays(start, end);
+        const topActual = rows.filter((row) => row.actual > 0).sort((a, b) => b.actual - a.actual)[0];
+        const biggestGap = rows.filter((row) => row.planned > 0 && row.drift < 0).sort((a, b) => a.drift - b.drift)[0];
+
+        return [
+          "# TimeBlock Reality Weekly Memory",
+          "",
+          `Week: ${dateKey(start)} to ${dateKey(addDays(end, -1))}`,
+          `Plan: ${formatHours(planMinutes)}`,
+          `Actual: ${formatHours(actualMinutes)}`,
+          `Match: ${match}%`,
+          `Drift: ${formatSignedHours(actualMinutes - planMinutes)}`,
+          "",
+          "## Habit Signals",
+          `- Capture habit: ${capturedDays}/${elapsedDays} days`,
+          `- Dominant reality: ${topActual ? `${topActual.category.code} ${formatHours(topActual.actual)}` : "-"}`,
+          `- Plan pressure: ${biggestGap ? `${biggestGap.category.code} ${formatSignedHours(biggestGap.drift)}` : "Stable"}`,
+          "",
+          "## LD8 Drift",
+          ...rows.map((row) => `- ${row.category.code}: plan ${formatHours(row.planned)}, actual ${formatHours(row.actual)}, drift ${formatSignedHours(row.drift)}`),
+        ].join("\n");
+      }
+
+      function fallbackCopyText(textarea) {
+        textarea.select();
+        textarea.setSelectionRange(0, textarea.value.length);
+        try {
+          return document.execCommand("copy");
+        } catch (error) {
+          return false;
+        }
+      }
+
+      function applyCalendarStatus(calendars) {
+        if (!calendars) return;
+        state.calendars = calendars;
+        els.planCalendarStatus.textContent = `${calendars.planFoundCount || 0}/8 LD8 found`;
+        els.actualCalendarStatus.textContent = calendars.actualFound ? `${calendars.actualName} found` : "Actual-Time Log missing";
+      }
+
+      function renderSyncDiagnostics() {
+        cleanupPersistentSyncQueue();
+        const pending = state.syncQueue.length;
+        els.pendingSyncStatus.textContent = pending ? `${pending} waiting` : "0 waiting";
+        els.retryAllButton.disabled = operationInFlight || persistentSyncInFlight || !pending;
+        const last = state.actionLog[0];
+        els.lastLogStatus.textContent = last ? `${formatTime(last.at)} ${last.message}` : "No log yet";
+      }
+
+      function renderRecovery() {
+        const pending = state.syncQueue?.length || 0;
+        const lastError = state.lastError || "";
+        const shouldShow = Boolean(lastError || pending);
+        els.recoveryCard.classList.toggle("is-visible", shouldShow);
+        els.recoveryTitle.textContent = lastError ? "App issue detected" : "Pending GCal sync";
+        els.recoveryMessage.textContent = lastError || `${pending} block${pending > 1 ? "s" : ""} waiting to sync to GCal.`;
+        els.retryPendingButton.disabled = persistentSyncInFlight || !pending;
+      }
+
+      function getBlockSyncState(block) {
+        if (block.syncStatus === "syncing") {
+          return { label: "Syncing...", className: "warn", isSynced: false, isSyncing: true, isError: false };
+        }
+        if (block.syncStatus === "error") {
+          return { label: "Sync failed", className: "bad", isSynced: false, isSyncing: false, isError: true };
+        }
+        if (block.syncStatus === "synced" || (block.googleEventId && !block.syncStatus)) {
+          return { label: "Synced to GCal", className: "", isSynced: true, isSyncing: false, isError: false };
+        }
+        return { label: "Saved locally", className: "warn", isSynced: false, isSyncing: false, isError: false };
+      }
+
+      function updateSyncStatus(status, isError = false) {
+        els.lastSyncStatus.textContent = status;
+        els.lastSyncStatus.className = `status-chip ${isError ? "bad" : "warn"}`;
+        els.serverStatus.textContent = status;
+        els.serverChip.textContent = isError ? "Issue" : (pendingSyncCount ? "Syncing" : "Ready");
+        els.serverChip.className = `status-chip ${isError ? "bad" : (pendingSyncCount ? "warn" : "")}`;
+        if (isError) {
+          state.lastError = status;
+          saveState();
+        } else if (!state.syncQueue?.length) {
+          state.lastError = "";
+          saveState();
+        }
+      }
+
+      function isCaptureLocked() {
+        return localActionInFlight || !bootstrapReady;
+      }
+
+      function renderControlLocks() {
+        const locked = operationInFlight;
+        els.fixLastButton.disabled = locked || !getLastActualBlock();
+        els.syncPlanButton.disabled = locked;
+        els.syncReviewButton.disabled = locked;
+        els.syncSetupPlanButton.disabled = locked;
+        els.refreshStatusButton.disabled = operationInFlight;
+      }
+
+      function hasUsableLocalState(savedState) {
+        return Boolean(savedState?.active || savedState?.actual?.length || savedState?.calendars);
+      }
+
+      function resetLocalData() {
+        if (!confirm("Reset data on this device?")) return;
+        localStorage.removeItem(storageKey);
+        state.plan = [];
+        state.actual = [];
+        state.active = null;
+        state.syncQueue = [];
+        state.actionLog = [];
+        state.lastError = "";
+        saveState();
+        render();
+        activateTab("capture");
+      }
+
+      function showRecovery(message, title = "App issue detected") {
+        const text = message || "Unknown app error";
+        state.lastError = text;
+        logAction(text);
+        saveState();
+        if (els?.recoveryCard) {
+          els.recoveryTitle.textContent = title;
+          els.recoveryMessage.textContent = text;
+          els.recoveryCard.classList.add("is-visible");
+        }
+        renderSyncDiagnostics();
+      }
+
+      function logAction(message) {
+        state.actionLog = [
+          { at: new Date().toISOString(), message },
+          ...(Array.isArray(state.actionLog) ? state.actionLog : []),
+        ].slice(0, 20);
+        saveState();
+      }
+
+      function normalizeLoadedState() {
+        state.plan = Array.isArray(state.plan) ? state.plan : [];
+        state.actual = Array.isArray(state.actual) ? state.actual : [];
+        state.syncQueue = Array.isArray(state.syncQueue) ? state.syncQueue : [];
+        state.actionLog = Array.isArray(state.actionLog) ? state.actionLog : [];
+        state.lastError = state.lastError || "";
+        cleanupPersistentSyncQueue();
+        saveState();
+      }
+
+      function runServer(functionName, ...args) {
+        return new Promise((resolve, reject) => {
+          const requestId = crypto.randomUUID();
+          let settled = false;
+          const timer = window.setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            const request = pagesBridgeRequests.get(requestId);
+            if (request) request.frame.remove();
+            pagesBridgeRequests.delete(requestId);
+            reject(new Error("GCal sync timed out. Tap Check or Retry."));
+          }, serverTimeoutMs);
+          const frame = document.createElement("iframe");
+          frame.title = "TimeBlock backend";
+          frame.setAttribute("aria-hidden", "true");
+          frame.style.cssText = "position:fixed;width:1px;height:1px;left:-10px;bottom:-10px;border:0;opacity:0;pointer-events:none;";
+          pagesBridgeRequests.set(requestId, {
+            frame,
+            timer,
+            resolve: (result) => {
+              if (settled) return;
+              settled = true;
+              resolve(result);
+            },
+            reject: (error) => {
+              if (settled) return;
+              settled = true;
+              reject(error);
+            },
+          });
+          frame.src = `${pagesBridgeUrl}&requestId=${encodeURIComponent(requestId)}&functionName=${encodeURIComponent(functionName)}&args=${encodeURIComponent(JSON.stringify(args))}`;
+          document.body.append(frame);
+        });
+      }
+
+      function readableError(error) {
+        return error && error.message ? error.message : "Server error";
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function loadState() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(storageKey)) || {};
+          return {
+            plan: Array.isArray(saved.plan) ? saved.plan : [],
+            actual: Array.isArray(saved.actual) ? saved.actual : [],
+            active: saved.active || null,
+            calendars: saved.calendars || null,
+            syncQueue: Array.isArray(saved.syncQueue) ? saved.syncQueue : [],
+            actionLog: Array.isArray(saved.actionLog) ? saved.actionLog : [],
+            lastError: saved.lastError || "",
+          };
+        } catch (error) {
+          return {
+            plan: [],
+            actual: [],
+            active: null,
+            calendars: null,
+            syncQueue: [],
+            actionLog: [{ at: new Date().toISOString(), message: "local cache parse failed" }],
+            lastError: "Local cache could not be read. Reset cache if the app keeps failing.",
+          };
+        }
+      }
+
+      function saveState() {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(state));
+        } catch (error) {
+          state.lastError = "Local cache could not be saved. Keep this tab open until GCal sync finishes.";
+        }
+      }
+
+      function categoryShortLabel(id) {
+        return categories.find((category) => category.id === id)?.code || id;
+      }
+
+      function getLastActualBlock() {
+        return state.actual[state.actual.length - 1];
+      }
+
+      function todayDateKey() {
+        return dateKey(new Date());
+      }
+
+      function dateKey(value) {
+        const date = new Date(value);
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+      }
+
+      function fromDateAndTime(day, time) {
+        return new Date(`${day}T${time}:00`);
+      }
+
+      function toTimeInput(date) {
+        return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+      }
+
+      function formatTime(value) {
+        return new Date(value).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+      }
+
+      function minutesBetween(start, end) {
+        return Math.max(0, Math.round((new Date(end) - new Date(start)) / 60000));
+      }
+
+      function sumBlockMinutes(blocks) {
+        return blocks.reduce((sum, block) => sum + minutesBetween(block.start, block.end), 0);
+      }
+
+      function blocksInRange(blocks, start, end) {
+        return blocks.filter((block) => new Date(block.start) >= start && new Date(block.start) < end);
+      }
+
+      function matchedPlanActualMinutes(planBlocks, actualBlocks) {
+        return actualBlocks.reduce((sum, actual) => {
+          const matched = planBlocks
+            .filter((plan) => plan.categoryId === actual.categoryId)
+            .reduce((innerSum, plan) => innerSum + overlapMinutes(actual, plan), 0);
+          return sum + Math.min(minutesBetween(actual.start, actual.end), matched);
+        }, 0);
+      }
+
+      function overlapMinutes(first, second) {
+        const start = Math.max(new Date(first.start).getTime(), new Date(second.start).getTime());
+        const end = Math.min(new Date(first.end).getTime(), new Date(second.end).getTime());
+        return Math.max(0, Math.round((end - start) / 60000));
+      }
+
+      function getNextPlanBlock(planBlocks) {
+        const now = new Date();
+        return planBlocks
+          .filter((block) => new Date(block.start) >= now)
+          .sort((a, b) => new Date(a.start) - new Date(b.start))[0] || null;
+      }
+
+      function elapsedWeekDays(start, end) {
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        const capped = today < end ? today : end;
+        return Math.max(1, Math.min(7, Math.ceil((capped - start) / (24 * 60 * 60 * 1000))));
+      }
+
+      function totalMinutes(blocks, start, end) {
+        return blocks
+          .filter((block) => new Date(block.start) >= start && new Date(block.start) < end)
+          .reduce((sum, block) => sum + minutesBetween(block.start, block.end), 0);
+      }
+
+      function formatHours(minutes) {
+        const hours = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+        if (!hours) return `${mins}m`;
+        return mins ? `${hours}h ${mins}m` : `${hours}h`;
+      }
+
+      function formatSignedHours(minutes) {
+        const sign = minutes > 0 ? "+" : minutes < 0 ? "-" : "";
+        return `${sign}${formatHours(Math.abs(minutes))}`;
+      }
+
+      function roundDate(date, stepMinutes) {
+        const ms = stepMinutes * 60 * 1000;
+        return new Date(Math.round(date.getTime() / ms) * ms);
+      }
+
+      function addMinutes(date, minutes) {
+        const next = new Date(date);
+        next.setMinutes(next.getMinutes() + minutes);
+        return next;
+      }
+
+      function addDays(date, days) {
+        const next = new Date(date);
+        next.setDate(next.getDate() + days);
+        return next;
+      }
+
+      function startOfWeek(date) {
+        const current = new Date(date);
+        const day = current.getDay();
+        const diff = day === 0 ? -6 : 1 - day;
+        current.setHours(0, 0, 0, 0);
+        current.setDate(current.getDate() + diff);
+        return current;
+      }
+    </script>
   </body>
 </html>

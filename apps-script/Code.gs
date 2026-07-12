@@ -20,6 +20,10 @@ const ACTIVE_PLACEHOLDER_MINUTES = 360;
 const BLOCK_LOOKUP_WINDOW_DAYS = 3;
 
 function doGet(event) {
+  if (event?.parameter?.mode === "bridge") {
+    return pagesBridgeResponse_(event);
+  }
+
   if (event?.parameter?.mode === "duplicate-ld8") {
     const source = event.parameter.source || "2026-07-06";
     const target = event.parameter.target || "2026-07-13";
@@ -40,6 +44,38 @@ function doGet(event) {
   return HtmlService.createHtmlOutputFromFile("Index")
     .setTitle("TimeBlock Reality")
     .addMetaTag("viewport", "width=device-width, initial-scale=1, viewport-fit=cover");
+}
+
+function pagesBridgeResponse_(event) {
+  const requestId = String(event?.parameter?.requestId || "");
+  const functionName = String(event?.parameter?.functionName || "");
+  const payload = { source: "timeblock-bridge", requestId, ok: false, error: { message: "Invalid bridge request" } };
+  try {
+    if (!requestId || !functionName) throw new Error("Invalid bridge request");
+    const args = JSON.parse(event.parameter.args || "[]");
+    payload.result = runPagesBridgeFunction_(functionName, args);
+    payload.ok = true;
+    delete payload.error;
+  } catch (error) {
+    payload.error = { message: error && error.message ? error.message : String(error) };
+  }
+  const safePayload = JSON.stringify(payload)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
+  return HtmlService.createHtmlOutput(`<script>window.top.postMessage(${safePayload}, "*");</script>`)
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function runPagesBridgeFunction_(functionName, args) {
+  switch (functionName) {
+    case "getBootstrapState": return getBootstrapState(args[0]);
+    case "syncPlanWeek": return syncPlanWeek();
+    case "createActualBlock": return createActualBlock(args[0]);
+    case "updateActualBlock": return updateActualBlock(args[0]);
+    case "startActiveBlock": return startActiveBlock(args[0]);
+    default: throw new Error(`Bridge function not allowed: ${functionName}`);
+  }
 }
 
 function duplicateLd8Week_(sourceKey, targetKey, execute) {

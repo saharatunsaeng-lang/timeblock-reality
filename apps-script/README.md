@@ -1,6 +1,6 @@
 # TimeBlock Reality Apps Script
 
-This is the stable runtime for the daily iPhone capture flow. It avoids frontend OAuth refresh problems by running Google Calendar operations server-side in Google Apps Script.
+This is the stable backend for the daily iPhone capture flow. It avoids frontend OAuth refresh problems by running Google Calendar operations server-side in Google Apps Script. The GitHub Pages frontend calls this backend through the `mode=bridge` one-shot iframe endpoint.
 
 ## Files
 
@@ -42,3 +42,4 @@ Local deployment state is stored in `.clasp.json` and intentionally ignored by g
 - `Sync Plan` reads the current week from the 8 LD8 calendars.
 - `Fix` updates the existing actual event when possible.
 - No recurring `Connect GCal` step is required in the web app.
+- `mode=bridge` serves the GitHub Pages frontend without exposing Calendar tokens to the browser.
