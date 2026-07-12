@@ -20,6 +20,16 @@ const ACTIVE_PLACEHOLDER_MINUTES = 360;
 const BLOCK_LOOKUP_WINDOW_DAYS = 3;
 
 function doGet(event) {
+  if (event?.parameter?.mode === "duplicate-ld8") {
+    const source = event.parameter.source || "2026-07-06";
+    const target = event.parameter.target || "2026-07-13";
+    const execute = event.parameter.execute === "1";
+    const payload = duplicateLd8Week_(source, target, execute);
+    return HtmlService
+      .createHtmlOutput(`<pre>${escapeHtml_(JSON.stringify(payload, null, 2))}</pre>`)
+      .setTitle(execute ? "LD8 Duplicate Complete" : "LD8 Duplicate Preview");
+  }
+
   if (event?.parameter?.mode === "audit") {
     const payload = JSON.stringify(inspectActualRange_(event.parameter), null, 2);
     return HtmlService
@@ -30,6 +40,87 @@ function doGet(event) {
   return HtmlService.createHtmlOutputFromFile("Index")
     .setTitle("TimeBlock Reality")
     .addMetaTag("viewport", "width=device-width, initial-scale=1, viewport-fit=cover");
+}
+
+function duplicateLd8Week_(sourceKey, targetKey, execute) {
+  const sourceStart = parseDateKey_(sourceKey);
+  const targetStart = parseDateKey_(targetKey);
+  const sourceEnd = addDays_(sourceStart, 7);
+  const targetEnd = addDays_(targetStart, 7);
+  const shiftMs = targetStart.getTime() - sourceStart.getTime();
+  const calendars = [];
+  let totalSource = 0;
+  let totalCreated = 0;
+  let totalSkipped = 0;
+
+  LD8_CATEGORIES.forEach((category) => {
+    const calendar = getFirstCalendarByName_(category.code);
+    if (!calendar) {
+      calendars.push({ calendar: category.code, found: false, source: 0, created: 0, skipped: 0 });
+      return;
+    }
+
+    const sourceEvents = calendar.getEvents(sourceStart, sourceEnd);
+    const targetKeys = new Set(calendar.getEvents(targetStart, targetEnd).map((event) => calendarEventKey_(event)));
+    let created = 0;
+    let skipped = 0;
+
+    sourceEvents.forEach((event) => {
+      const start = new Date(event.getStartTime().getTime() + shiftMs);
+      const end = new Date(event.getEndTime().getTime() + shiftMs);
+      const key = calendarEventKey_(event, start, end);
+      if (targetKeys.has(key)) {
+        skipped += 1;
+        return;
+      }
+      if (execute) {
+        const options = {
+          description: event.getDescription() || "",
+          location: event.getLocation() || "",
+        };
+        if (event.isAllDayEvent()) {
+          calendar.createAllDayEvent(event.getTitle(), start, end, options);
+        } else {
+          calendar.createEvent(event.getTitle(), start, end, options);
+        }
+        targetKeys.add(key);
+      }
+      created += 1;
+    });
+
+    totalSource += sourceEvents.length;
+    totalCreated += created;
+    totalSkipped += skipped;
+    calendars.push({ calendar: category.code, found: true, source: sourceEvents.length, created, skipped });
+  });
+
+  return {
+    mode: execute ? "executed" : "dry-run",
+    source: sourceKey,
+    target: targetKey,
+    sourceEnd: formatDateKey_(sourceEnd),
+    targetEnd: formatDateKey_(targetEnd),
+    totalSource,
+    totalCreated,
+    totalSkipped,
+    calendars,
+  };
+}
+
+function calendarEventKey_(event, startOverride, endOverride) {
+  const start = startOverride || event.getStartTime();
+  const end = endOverride || event.getEndTime();
+  return [event.getTitle(), start.getTime(), end.getTime(), event.isAllDayEvent()].join("|");
+}
+
+function parseDateKey_(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) throw new Error(`Invalid date: ${value}`);
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function formatDateKey_(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function getBootstrapState(includePlan) {
