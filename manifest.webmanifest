@@ -1,7 +1,7 @@
 {
   "name": "TimeBlock Reality",
   "short_name": "TimeBlock",
-  "start_url": ".",
+  "start_url": "./?v=20260712-local-first-2",
   "display": "standalone",
   "background_color": "#f7f3ea",
   "theme_color": "#f7f3ea",

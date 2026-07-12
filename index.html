@@ -853,7 +853,8 @@
       const serverTimeoutMs = 10000;
       const state = loadState();
       let refreshInFlight = false;
-      let bootstrapReady = hasUsableLocalState(state);
+      // Capture stays available while the server restores optional background state.
+      let bootstrapReady = true;
       let operationInFlight = false;
       let localActionInFlight = false;
       let pendingSyncCount = 0;

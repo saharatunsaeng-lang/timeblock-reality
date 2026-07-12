@@ -1,8 +1,8 @@
-const cacheName = "timeblock-reality-v10-offline-capture";
+const cacheName = "timeblock-reality-v11-local-first";
 const assets = [
-  "./?v=20260712-pages-bridge",
-  "index.html?v=20260712-pages-bridge",
-  "manifest.webmanifest?v=20260712-pages-bridge",
+  "./?v=20260712-local-first-2",
+  "index.html?v=20260712-local-first-2",
+  "manifest.webmanifest?v=20260712-local-first-2",
   "icon.svg",
 ];
 
