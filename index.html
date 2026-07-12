@@ -233,32 +233,6 @@
         background: var(--amber-soft);
       }
 
-      .recovery-card {
-        display: none;
-        gap: 10px;
-        margin-bottom: 12px;
-        border-color: rgba(155, 71, 65, 0.35);
-        background: var(--danger-soft);
-        padding: 12px;
-      }
-
-      .recovery-card.is-visible {
-        display: grid;
-      }
-
-      .recovery-card p {
-        margin: 0;
-        color: var(--muted);
-        font-size: 0.84rem;
-        font-weight: 750;
-      }
-
-      .button-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-
       .status-chip {
         display: inline-flex;
         align-items: center;
@@ -659,19 +633,6 @@
         <div class="date-label" id="todayLabel"></div>
       </header>
 
-      <section class="status-card recovery-card" id="recoveryCard" aria-label="App recovery">
-        <div>
-          <span class="label">Recovery</span>
-          <strong id="recoveryTitle">App issue detected</strong>
-          <p id="recoveryMessage">Reload or retry pending sync.</p>
-        </div>
-        <div class="button-row">
-          <button id="retryPendingButton" class="secondary-button" type="button">Retry sync</button>
-          <button id="reloadAppButton" class="secondary-button" type="button">Reload</button>
-          <button id="resetRecoveryButton" class="danger-button" type="button">Reset cache</button>
-        </div>
-      </section>
-
       <section class="panel is-active" id="capturePanel">
         <section class="now-card" aria-label="Current block">
           <div>
@@ -922,12 +883,6 @@
         pendingSyncStatus: document.querySelector("#pendingSyncStatus"),
         retryAllButton: document.querySelector("#retryAllButton"),
         lastLogStatus: document.querySelector("#lastLogStatus"),
-        recoveryCard: document.querySelector("#recoveryCard"),
-        recoveryTitle: document.querySelector("#recoveryTitle"),
-        recoveryMessage: document.querySelector("#recoveryMessage"),
-        retryPendingButton: document.querySelector("#retryPendingButton"),
-        reloadAppButton: document.querySelector("#reloadAppButton"),
-        resetRecoveryButton: document.querySelector("#resetRecoveryButton"),
       };
 
       window.addEventListener("error", (event) => showRecovery(`App error: ${event.message || "Unknown error"}`));
@@ -975,9 +930,6 @@
         els.connectGoogleButton.addEventListener("click", connectGoogle);
         els.resetButton.addEventListener("click", resetLocalData);
         els.retryAllButton.addEventListener("click", drainPersistentSyncQueue);
-        els.retryPendingButton.addEventListener("click", retryRecovery);
-        els.reloadAppButton.addEventListener("click", () => window.location.reload());
-        els.resetRecoveryButton.addEventListener("click", resetLocalData);
         document.addEventListener("visibilitychange", handleVisibilityResume);
       }
 
@@ -1836,19 +1788,7 @@
       }
 
       function renderRecovery() {
-        const pending = state.syncQueue?.length || 0;
-        const lastError = state.lastError || "";
-        const shouldShow = Boolean(lastError || pending);
-        els.recoveryCard.classList.toggle("is-visible", shouldShow);
-        els.recoveryTitle.textContent = lastError ? "App issue detected" : "Pending GCal sync";
-        els.recoveryMessage.textContent = lastError || `${pending} block${pending > 1 ? "s" : ""} waiting to sync to GCal.`;
-        els.retryPendingButton.textContent = pending ? "Retry sync" : "Retry connection";
-        els.retryPendingButton.disabled = persistentSyncInFlight || refreshInFlight;
-      }
-
-      function retryRecovery() {
-        if (state.syncQueue?.length) drainPersistentSyncQueue();
-        else refreshStatus();
+        // GCal sync is optional; pending work is shown on Last and in More.
       }
 
       function getBlockSyncState(block) {
@@ -1870,7 +1810,7 @@
         els.serverStatus.textContent = status;
         els.serverChip.textContent = isError ? "Issue" : (pendingSyncCount ? "Syncing" : "Ready");
         els.serverChip.className = `status-chip ${isError ? "bad" : (pendingSyncCount ? "warn" : "")}`;
-        if (isError) {
+        if (isError && !/GCal|Google Calendar|Connect Google/.test(status)) {
           state.lastError = status;
           saveState();
         } else if (!state.syncQueue?.length) {
@@ -1913,14 +1853,12 @@
 
       function showRecovery(message, title = "App issue detected") {
         const text = message || "Unknown app error";
-        state.lastError = text;
-        logAction(text);
+        state.lastError = "";
+        logAction(`${title}: ${text}`);
         saveState();
-        if (els?.recoveryCard) {
-          els.recoveryTitle.textContent = title;
-          els.recoveryMessage.textContent = text;
-          els.recoveryCard.classList.add("is-visible");
-        }
+        els.serverStatus.textContent = title === "App issue detected" ? "Check More" : "Saved locally";
+        els.serverChip.textContent = title === "App issue detected" ? "Issue" : "Local";
+        els.serverChip.className = title === "App issue detected" ? "status-chip bad" : "status-chip warn";
         renderSyncDiagnostics();
       }
 
@@ -1938,6 +1876,7 @@
         state.syncQueue = Array.isArray(state.syncQueue) ? state.syncQueue : [];
         state.actionLog = Array.isArray(state.actionLog) ? state.actionLog : [];
         state.lastError = state.lastError || "";
+        if (/Connect Google|GCal|Google Calendar/.test(state.lastError)) state.lastError = "";
         state.google = { ...defaultGoogleState(), ...(state.google || {}) };
         cleanupPersistentSyncQueue();
         saveState();
