@@ -2,11 +2,13 @@
 
 This is the fallback/admin runtime for Calendar operations. The daily iPhone app now runs from GitHub Pages with direct Google Calendar OAuth; this Apps Script web app remains available for administrative utilities and recovery.
 
+**`Index.html` UI is frozen.** It duplicates the capture/review logic that lives in the root [`index.html`](../index.html) and the two had already started drifting. Ship UI changes and reliability fixes to the root `index.html` only. This file stays as-is except for changes needed to keep the admin fallback (`?mode=audit`, `?mode=duplicate-ld8`) and Calendar backend (`Code.gs`) working.
+
 ## Files
 
-- `Code.gs`: Apps Script backend for Calendar read/write.
-- `Index.html`: mobile-first web app UI.
-- `appsscript.json`: manifest and Calendar scopes.
+- `Code.gs`: Apps Script backend for Calendar read/write, plus admin utilities (`?mode=audit`, `?mode=duplicate-ld8`) and `buildWeeklyMemoryPayload()` (invoked via `clasp run` for the weekly vault push, see root README).
+- `Index.html`: frozen mobile-first web app UI, kept only as an emergency fallback if GitHub Pages is unreachable.
+- `appsscript.json`: manifest, Calendar scope, and Execution API access for `clasp run`.
 
 ## Production URL
 

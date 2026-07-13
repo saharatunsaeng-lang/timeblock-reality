@@ -513,3 +513,106 @@ function addMinutes_(date, minutes) {
   next.setMinutes(next.getMinutes() + minutes);
   return next;
 }
+
+// Server-side mirror of buildWeeklyMemoryText() in index.html, meant to be invoked
+// via `clasp run buildWeeklyMemoryPayload` from a Mac-side script (no browser OAuth
+// needed - runs under the Apps Script deployment's own Calendar authorization).
+// Returns a payload shaped for ld8-quick-notes' POST /api/notes.
+function buildWeeklyMemoryPayload() {
+  const start = startOfWeek_(new Date());
+  const end = addDays_(start, 7);
+  const planBlocks = syncPlanWeek().blocks;
+  const actualBlocks = getActualWeekBlocks();
+
+  const planMinutes = sumBlockMinutes_(planBlocks);
+  const actualMinutes = sumBlockMinutes_(actualBlocks);
+  const matchedMinutes = matchedPlanActualMinutes_(planBlocks, actualBlocks);
+  const match = planMinutes ? Math.round((matchedMinutes / planMinutes) * 100) : 0;
+
+  const rows = LD8_CATEGORIES
+    .map((category) => {
+      const planned = sumBlockMinutes_(planBlocks.filter((block) => block.categoryId === category.id));
+      const actual = sumBlockMinutes_(actualBlocks.filter((block) => block.categoryId === category.id));
+      return { category, planned, actual, drift: actual - planned };
+    })
+    .filter((row) => row.planned || row.actual)
+    .sort((a, b) => Math.abs(b.drift) - Math.abs(a.drift));
+
+  const capturedDays = new Set(actualBlocks.map((block) => dateKey_(block.start))).size;
+  const elapsedDays = elapsedWeekDays_(start, end);
+  const topActual = rows.filter((row) => row.actual > 0).sort((a, b) => b.actual - a.actual)[0];
+  const biggestGap = rows.filter((row) => row.planned > 0 && row.drift < 0).sort((a, b) => a.drift - b.drift)[0];
+
+  const body = [
+    "# TimeBlock Reality Weekly Memory",
+    "",
+    `Week: ${dateKey_(start)} to ${dateKey_(addDays_(end, -1))}`,
+    `Plan: ${formatHours_(planMinutes)}`,
+    `Actual: ${formatHours_(actualMinutes)}`,
+    `Match: ${match}%`,
+    `Drift: ${formatSignedHours_(actualMinutes - planMinutes)}`,
+    "",
+    "## Habit Signals",
+    `- Capture habit: ${capturedDays}/${elapsedDays} days`,
+    `- Dominant reality: ${topActual ? `${topActual.category.code} ${formatHours_(topActual.actual)}` : "-"}`,
+    `- Plan pressure: ${biggestGap ? `${biggestGap.category.code} ${formatSignedHours_(biggestGap.drift)}` : "Stable"}`,
+    "",
+    "## LD8 Drift",
+    ...rows.map((row) => `- ${row.category.code}: plan ${formatHours_(row.planned)}, actual ${formatHours_(row.actual)}, drift ${formatSignedHours_(row.drift)}`),
+  ].join("\n");
+
+  return {
+    date: dateKey_(new Date()),
+    domainId: "3 MM",
+    memoryType: "signal",
+    title: `Weekly TimeBlock Review - ${dateKey_(start)} to ${dateKey_(addDays_(end, -1))}`,
+    body,
+  };
+}
+
+function sumBlockMinutes_(blocks) {
+  return blocks.reduce((sum, block) => sum + minutesBetween_(block.start, block.end), 0);
+}
+
+function minutesBetween_(start, end) {
+  return Math.max(0, Math.round((new Date(end) - new Date(start)) / 60000));
+}
+
+function matchedPlanActualMinutes_(planBlocks, actualBlocks) {
+  return actualBlocks.reduce((sum, actual) => {
+    const matched = planBlocks
+      .filter((plan) => plan.categoryId === actual.categoryId)
+      .reduce((innerSum, plan) => innerSum + overlapMinutes_(actual, plan), 0);
+    return sum + Math.min(minutesBetween_(actual.start, actual.end), matched);
+  }, 0);
+}
+
+function overlapMinutes_(first, second) {
+  const start = Math.max(new Date(first.start).getTime(), new Date(second.start).getTime());
+  const end = Math.min(new Date(first.end).getTime(), new Date(second.end).getTime());
+  return Math.max(0, Math.round((end - start) / 60000));
+}
+
+function elapsedWeekDays_(start, end) {
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  const capped = today < end ? today : end;
+  return Math.max(1, Math.min(7, Math.ceil((capped - start) / (24 * 60 * 60 * 1000))));
+}
+
+function dateKey_(value) {
+  const date = new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function formatHours_(minutes) {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (!hours) return `${mins}m`;
+  return mins ? `${hours}h ${mins}m` : `${hours}h`;
+}
+
+function formatSignedHours_(minutes) {
+  const sign = minutes > 0 ? "+" : minutes < 0 ? "-" : "";
+  return `${sign}${formatHours_(Math.abs(minutes))}`;
+}

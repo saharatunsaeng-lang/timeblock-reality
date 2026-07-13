@@ -22,7 +22,7 @@ The recommended runtime is now the GitHub Pages frontend with direct Google Cale
 ## Runtime
 
 - Recommended: GitHub Pages frontend + direct Google Calendar API.
-- Fallback/admin utility: Google Apps Script Web App.
+- Fallback/admin utility: Google Apps Script Web App. `apps-script/Index.html` is frozen (emergency fallback only) - ship UI changes to this root `index.html`. `apps-script/Code.gs` stays active as the Calendar backend for the admin fallback and for `clasp run`-triggered utilities like the weekly memory push.
 
 GitHub Pages app:
 
@@ -64,6 +64,7 @@ Runtime behavior:
 - Actual-block sync is idempotent: before creating an event it looks up an existing one by `blockId` (extendedProperties), so a lost response never creates a duplicate GCal event.
 - Blocks under 60 seconds are discarded instead of padded to 5 minutes, so a mis-tap never writes fake data to `Actual-Time Log`.
 - An active block older than 6 hours (device died / forgot to end) is auto-closed to a 30-minute placeholder on next bootstrap and flagged for a manual fix, instead of being resurrected as still-running.
+- Bootstrap reads the last 14 days of `Actual-Time Log` (not just the current week), so a fresh device or a cleared cache recovers recent history from GCal instead of starting blank. Local `state.actual` is pruned to the same 14-day window for synced blocks (anything still pending sync is kept regardless of age) to keep localStorage from growing unbounded.
 
 ## Next phase
 

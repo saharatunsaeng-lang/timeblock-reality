@@ -1384,8 +1384,18 @@
           state.active = resolveIncomingActive(result.active);
         }
         if (result.calendars) applyCalendarStatus(result.calendars);
+        pruneActualHistory();
         saveState();
         render();
+      }
+
+      function pruneActualHistory() {
+        const cutoff = Date.now() - actualHistoryDays * 24 * 60 * 60 * 1000;
+        state.actual = state.actual.filter((block) => {
+          if (block.syncStatus && block.syncStatus !== "synced") return true;
+          const end = new Date(block.end || block.start).getTime();
+          return !Number.isFinite(end) || end >= cutoff;
+        });
       }
 
       function resolveIncomingActive(active) {
@@ -2052,9 +2062,13 @@
         renderGoogleState();
       }
 
+      const actualHistoryDays = 14;
+
       async function getDirectBootstrapState() {
         await ensureGoogleReady();
-        const events = await getDirectCalendarEvents(state.google.actualCalendarId, startOfWeek(new Date()), addDays(startOfWeek(new Date()), 7));
+        const rangeStart = addDays(new Date(), -actualHistoryDays);
+        const rangeEnd = addDays(startOfWeek(new Date()), 7);
+        const events = await getDirectCalendarEvents(state.google.actualCalendarId, rangeStart, rangeEnd);
         const actual = events
           .filter((event) => event.extendedProperties?.private?.status !== "active")
           .map(serializeDirectActualEvent)
