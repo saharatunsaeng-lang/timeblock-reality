@@ -268,6 +268,13 @@
         margin: 18px 0 10px;
       }
 
+      .memory-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
       .timeline-card,
       .review-card,
       .settings-card,
@@ -696,7 +703,11 @@
 
         <div class="section-heading">
           <h2>Memory Handoff</h2>
-          <button id="copyMemoryButton" class="secondary-button" type="button">Copy</button>
+          <div class="memory-actions">
+            <button id="copyMemoryButton" class="secondary-button" type="button">Copy</button>
+            <button id="shareMemoryButton" class="secondary-button" type="button">Share</button>
+            <button id="downloadMemoryButton" class="secondary-button" type="button">Export .md</button>
+          </div>
         </div>
         <section class="settings-card">
           <div class="setting-row">
@@ -867,6 +878,8 @@
         reviewRows: document.querySelector("#reviewRows"),
         habitRows: document.querySelector("#habitRows"),
         copyMemoryButton: document.querySelector("#copyMemoryButton"),
+        shareMemoryButton: document.querySelector("#shareMemoryButton"),
+        downloadMemoryButton: document.querySelector("#downloadMemoryButton"),
         memoryStatus: document.querySelector("#memoryStatus"),
         memoryText: document.querySelector("#memoryText"),
         syncPlanButton: document.querySelector("#syncPlanButton"),
@@ -927,6 +940,8 @@
         els.syncReviewButton.addEventListener("click", syncPlan);
         els.syncSetupPlanButton.addEventListener("click", syncPlan);
         els.copyMemoryButton.addEventListener("click", copyWeeklyMemory);
+        els.shareMemoryButton.addEventListener("click", shareWeeklyMemory);
+        els.downloadMemoryButton.addEventListener("click", downloadWeeklyMemory);
         els.refreshStatusButton.addEventListener("click", refreshStatus);
         els.connectGoogleButton.addEventListener("click", connectGoogle);
         els.resetButton.addEventListener("click", resetLocalData);
@@ -1772,6 +1787,46 @@
 
         els.memoryStatus.textContent = copied ? "Copied" : "Shown";
         els.memoryStatus.className = copied ? "status-chip" : "status-chip warn";
+      }
+
+      async function shareWeeklyMemory() {
+        const text = buildWeeklyMemoryText();
+        els.memoryText.value = text;
+        els.memoryText.hidden = false;
+        if (!navigator.share) {
+          await copyWeeklyMemory();
+          els.memoryStatus.textContent = "Copied - Share unavailable";
+          els.memoryStatus.className = "status-chip warn";
+          return;
+        }
+        try {
+          await navigator.share({ title: "TimeBlock Reality Weekly Memory", text });
+          els.memoryStatus.textContent = "Shared";
+          els.memoryStatus.className = "status-chip";
+        } catch (error) {
+          if (error?.name !== "AbortError") {
+            els.memoryStatus.textContent = "Share cancelled";
+            els.memoryStatus.className = "status-chip warn";
+          }
+        }
+      }
+
+      function downloadWeeklyMemory() {
+        const start = startOfWeek(new Date());
+        const text = buildWeeklyMemoryText();
+        const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `timeblock-reality-week-${dateKey(start)}.md`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        els.memoryText.value = text;
+        els.memoryText.hidden = false;
+        els.memoryStatus.textContent = "Exported";
+        els.memoryStatus.className = "status-chip";
       }
 
       function buildWeeklyMemoryText() {

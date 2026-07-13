@@ -22,7 +22,7 @@ The recommended runtime is now the GitHub Pages frontend with direct Google Cale
 ## Runtime
 
 - Recommended: GitHub Pages frontend + direct Google Calendar API.
-- Fallback/admin utility: Google Apps Script Web App. `apps-script/Index.html` is frozen (emergency fallback only) - ship UI changes to this root `index.html`. `apps-script/Code.gs` stays active as the Calendar backend for the admin fallback and for `clasp run`-triggered utilities like the weekly memory push.
+- Fallback/admin utility: Google Apps Script Web App. `apps-script/Index.html` is frozen (emergency fallback only) - ship UI changes to this root `index.html`. `apps-script/Code.gs` stays active as the Calendar backend for admin and recovery utilities; the daily app does not depend on Apps Script Execution API setup.
 
 GitHub Pages app:
 

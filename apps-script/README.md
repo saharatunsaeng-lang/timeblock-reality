@@ -6,9 +6,9 @@ This is the fallback/admin runtime for Calendar operations. The daily iPhone app
 
 ## Files
 
-- `Code.gs`: Apps Script backend for Calendar read/write, plus admin utilities (`?mode=audit`, `?mode=duplicate-ld8`) and `buildWeeklyMemoryPayload()` (invoked via `clasp run` for the weekly vault push, see root README).
+- `Code.gs`: Apps Script backend for Calendar read/write and admin utilities (`?mode=audit`, `?mode=duplicate-ld8`). The weekly memory helper is retained for experiments, but the daily app does not depend on `clasp run` or Execution API setup.
 - `Index.html`: frozen mobile-first web app UI, kept only as an emergency fallback if GitHub Pages is unreachable.
-- `appsscript.json`: manifest, Calendar scope, and Execution API access for `clasp run`.
+- `appsscript.json`: manifest and Calendar scope for the fallback/admin runtime.
 
 ## Production URL
 
