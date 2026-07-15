@@ -1669,7 +1669,7 @@
           closeFixSheet();
           return;
         }
-        els.lastBlockTitle.textContent = `${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)}`;
+        els.lastBlockTitle.textContent = `${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)} · ${minutesBetween(block.start, block.end)}m`;
         const syncState = getBlockSyncState(block);
         els.lastSyncStatus.textContent = syncState.label;
         els.lastSyncStatus.className = `status-chip ${syncState.className}`;

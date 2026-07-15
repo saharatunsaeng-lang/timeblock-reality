@@ -1,8 +1,8 @@
-const cacheName = "timeblock-reality-v17-home-badge";
+const cacheName = "timeblock-reality-v18-last-duration";
 const assets = [
-  "./?v=20260715-home-badge",
-  "index.html?v=20260715-home-badge",
-  "manifest.webmanifest?v=20260715-home-badge",
+  "./?v=20260715-last-duration",
+  "index.html?v=20260715-last-duration",
+  "manifest.webmanifest?v=20260715-last-duration",
   "icon.svg",
 ];
 
