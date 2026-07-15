@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260715-focus-signal" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260715-live-timer" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -196,6 +196,24 @@
       .checkin-signal {
         display: inline-flex;
         margin-top: 7px;
+      }
+
+      .running-label {
+        display: block;
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 0.68rem;
+        font-weight: 900;
+        text-transform: uppercase;
+      }
+
+      .elapsed-timer {
+        display: block;
+        margin-top: 1px;
+        color: var(--accent);
+        font-size: 2rem;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
       }
 
       .now-card strong,
@@ -655,6 +673,8 @@
           <div>
             <span class="label">Now</span>
             <strong id="activeTitle">No active block</strong>
+            <span class="running-label" id="runningLabel" hidden>Running</span>
+            <time class="elapsed-timer" id="activeElapsed" hidden>00:00:00</time>
             <span class="block-time" id="activeMeta"></span>
             <span class="status-chip warn checkin-signal" id="activeSignal" hidden>30m check-in</span>
           </div>
@@ -878,6 +898,8 @@
         viewTitle: document.querySelector("#viewTitle"),
         nowCard: document.querySelector(".now-card"),
         activeTitle: document.querySelector("#activeTitle"),
+        runningLabel: document.querySelector("#runningLabel"),
+        activeElapsed: document.querySelector("#activeElapsed"),
         activeMeta: document.querySelector("#activeMeta"),
         activeSignal: document.querySelector("#activeSignal"),
         endBlockButton: document.querySelector("#endBlockButton"),
@@ -953,7 +975,7 @@
         silentReconnectGoogle();
         drainPersistentSyncQueue();
         refreshStatus();
-        setInterval(renderActive, 60 * 1000);
+        setInterval(tickActiveTimer, 1000);
         if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
       }
 
@@ -1526,13 +1548,18 @@
         els.activeSignal.hidden = !hasCheckin;
         if (!state.active) {
           els.activeTitle.textContent = bootstrapReady ? "No active block" : "Syncing with GCal";
+          els.runningLabel.hidden = true;
+          els.activeElapsed.hidden = true;
+          els.activeElapsed.textContent = "";
           els.activeMeta.textContent = bootstrapReady ? "" : "Loading current state...";
           els.endBlockButton.disabled = true;
         } else {
-          els.activeTitle.textContent = `${categoryShortLabel(state.active.categoryId)} ${formatTime(state.active.start)}`;
+          els.activeTitle.textContent = categoryShortLabel(state.active.categoryId);
+          els.runningLabel.hidden = false;
+          els.activeElapsed.hidden = false;
+          els.activeElapsed.textContent = formatElapsed(state.active.start, new Date());
           const syncText = pendingSyncCount ? " · syncing" : "";
-          const checkinText = hasCheckin ? " · 30m check-in" : "";
-          els.activeMeta.textContent = `Running ${formatHours(minutesBetween(state.active.start, new Date().toISOString()))}${checkinText}${syncText}`;
+          els.activeMeta.textContent = `Started ${formatTime(state.active.start)}${syncText}`;
           els.endBlockButton.disabled = locked;
         }
         [...els.quickGrid.querySelectorAll("button")].forEach((button) => {
@@ -1540,6 +1567,10 @@
           button.classList.toggle("active", state.active?.categoryId === category?.id);
           button.disabled = locked;
         });
+      }
+
+      function tickActiveTimer() {
+        if (state.active) renderActive();
       }
 
       function scheduleActiveSignal() {
@@ -2520,6 +2551,14 @@
 
       function minutesBetween(start, end) {
         return Math.max(0, Math.round((new Date(end) - new Date(start)) / 60000));
+      }
+
+      function formatElapsed(start, end = new Date()) {
+        const seconds = Math.max(0, Math.floor((new Date(end) - new Date(start)) / 1000));
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const remainder = seconds % 60;
+        return [hours, minutes, remainder].map((value) => String(value).padStart(2, "0")).join(":");
       }
 
       function sumBlockMinutes(blocks) {
