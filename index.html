@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260712-local-first" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260715-focus-signal" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -186,6 +186,16 @@
       .now-card {
         padding: 12px;
         margin-bottom: 12px;
+      }
+
+      .now-card.has-checkin {
+        border-color: var(--amber);
+        background: var(--amber-soft);
+      }
+
+      .checkin-signal {
+        display: inline-flex;
+        margin-top: 7px;
       }
 
       .now-card strong,
@@ -646,6 +656,7 @@
             <span class="label">Now</span>
             <strong id="activeTitle">No active block</strong>
             <span class="block-time" id="activeMeta"></span>
+            <span class="status-chip warn checkin-signal" id="activeSignal" hidden>30m check-in</span>
           </div>
           <button id="endBlockButton" class="end-button" disabled>End</button>
         </section>
@@ -718,6 +729,19 @@
             <span class="status-chip" id="memoryStatus">Ready</span>
           </div>
           <textarea id="memoryText" class="memory-box" readonly hidden></textarea>
+        </section>
+
+        <div class="section-heading">
+          <h2>Focus Signal</h2>
+        </div>
+        <section class="settings-card">
+          <div class="setting-row">
+            <div>
+              <span class="label">30 minute check-in</span>
+              <strong id="focusSignalStatus">In-app signal on</strong>
+            </div>
+            <button id="enableFocusAlertsButton" class="secondary-button" type="button">Enable alert</button>
+          </div>
         </section>
 
         <div class="section-heading">
@@ -832,6 +856,7 @@
       const serverTimeoutMs = 10000;
       const googleClientId = "809951458535-dg6gjp5nk4fjrgs1kngrger4cni90er9.apps.googleusercontent.com";
       const googleScopes = "https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events";
+      const thirtyMinuteSignalMs = 30 * 60 * 1000;
       const state = loadState();
       let tokenClient = null;
       let googleAccessToken = "";
@@ -846,12 +871,15 @@
       let syncChain = Promise.resolve();
       let persistentSyncInFlight = false;
       let fixTargetBlockId = "";
+      let activeSignalTimer = 0;
 
       const els = {
         viewEyebrow: document.querySelector("#viewEyebrow"),
         viewTitle: document.querySelector("#viewTitle"),
+        nowCard: document.querySelector(".now-card"),
         activeTitle: document.querySelector("#activeTitle"),
         activeMeta: document.querySelector("#activeMeta"),
+        activeSignal: document.querySelector("#activeSignal"),
         endBlockButton: document.querySelector("#endBlockButton"),
         quickGrid: document.querySelector("#quickGrid"),
         fixSheet: document.querySelector("#fixSheet"),
@@ -882,6 +910,8 @@
         downloadMemoryButton: document.querySelector("#downloadMemoryButton"),
         memoryStatus: document.querySelector("#memoryStatus"),
         memoryText: document.querySelector("#memoryText"),
+        focusSignalStatus: document.querySelector("#focusSignalStatus"),
+        enableFocusAlertsButton: document.querySelector("#enableFocusAlertsButton"),
         syncPlanButton: document.querySelector("#syncPlanButton"),
         syncReviewButton: document.querySelector("#syncReviewButton"),
         syncSetupPlanButton: document.querySelector("#syncSetupPlanButton"),
@@ -919,6 +949,7 @@
         bindEvents();
         initGoogleClient();
         render();
+        scheduleActiveSignal();
         silentReconnectGoogle();
         drainPersistentSyncQueue();
         refreshStatus();
@@ -942,6 +973,7 @@
         els.copyMemoryButton.addEventListener("click", copyWeeklyMemory);
         els.shareMemoryButton.addEventListener("click", shareWeeklyMemory);
         els.downloadMemoryButton.addEventListener("click", downloadWeeklyMemory);
+        els.enableFocusAlertsButton.addEventListener("click", enableFocusAlerts);
         els.refreshStatusButton.addEventListener("click", refreshStatus);
         els.connectGoogleButton.addEventListener("click", connectGoogle);
         els.resetButton.addEventListener("click", resetLocalData);
@@ -1012,6 +1044,7 @@
             start: new Date().toISOString(),
           };
           saveState();
+          scheduleActiveSignal();
           render();
           if (endedBlock) queueActualSync(endedBlock);
           queueActiveSync(state.active);
@@ -1029,6 +1062,7 @@
         try {
           logAction("end active");
           const block = finishActiveBlockLocally();
+          scheduleActiveSignal();
           if (!block) return;
           queueActualSync(block);
           if (shouldRender) render();
@@ -1383,7 +1417,9 @@
         if (document.hidden) return;
         logAction("resume app");
         setDefaultTimes();
+        triggerThirtyMinuteSignal();
         renderActive();
+        scheduleActiveSignal();
         silentReconnectGoogle();
         drainPersistentSyncQueue();
         refreshStatus();
@@ -1396,11 +1432,16 @@
         if (Array.isArray(result.plan)) state.plan = result.plan;
         if (Array.isArray(result.actual)) state.actual = mergeBlocks(state.actual, result.actual);
         if ("active" in result && !pendingSyncCount && !localActionInFlight) {
-          state.active = resolveIncomingActive(result.active);
+          const incomingActive = resolveIncomingActive(result.active);
+          if (incomingActive?.id === state.active?.id && state.active.reminderSentAt) {
+            incomingActive.reminderSentAt = state.active.reminderSentAt;
+          }
+          state.active = incomingActive;
         }
         if (result.calendars) applyCalendarStatus(result.calendars);
         pruneActualHistory();
         saveState();
+        scheduleActiveSignal();
         render();
       }
 
@@ -1474,11 +1515,15 @@
         renderToday();
         renderReview();
         renderSyncDiagnostics();
+        renderFocusSignalStatus();
         renderControlLocks();
       }
 
       function renderActive() {
         const locked = isCaptureLocked();
+        const hasCheckin = Boolean(state.active?.reminderSentAt);
+        els.nowCard.classList.toggle("has-checkin", hasCheckin);
+        els.activeSignal.hidden = !hasCheckin;
         if (!state.active) {
           els.activeTitle.textContent = bootstrapReady ? "No active block" : "Syncing with GCal";
           els.activeMeta.textContent = bootstrapReady ? "" : "Loading current state...";
@@ -1486,7 +1531,8 @@
         } else {
           els.activeTitle.textContent = `${categoryShortLabel(state.active.categoryId)} ${formatTime(state.active.start)}`;
           const syncText = pendingSyncCount ? " · syncing" : "";
-          els.activeMeta.textContent = `Running ${formatHours(minutesBetween(state.active.start, new Date().toISOString()))}${syncText}`;
+          const checkinText = hasCheckin ? " · 30m check-in" : "";
+          els.activeMeta.textContent = `Running ${formatHours(minutesBetween(state.active.start, new Date().toISOString()))}${checkinText}${syncText}`;
           els.endBlockButton.disabled = locked;
         }
         [...els.quickGrid.querySelectorAll("button")].forEach((button) => {
@@ -1494,6 +1540,72 @@
           button.classList.toggle("active", state.active?.categoryId === category?.id);
           button.disabled = locked;
         });
+      }
+
+      function scheduleActiveSignal() {
+        window.clearTimeout(activeSignalTimer);
+        activeSignalTimer = 0;
+        if (!state.active || state.active.reminderSentAt) return;
+        const elapsed = Date.now() - new Date(state.active.start).getTime();
+        const delay = Math.max(0, thirtyMinuteSignalMs - elapsed);
+        activeSignalTimer = window.setTimeout(() => {
+          if (triggerThirtyMinuteSignal()) render();
+          scheduleActiveSignal();
+        }, delay);
+      }
+
+      function triggerThirtyMinuteSignal() {
+        if (!state.active || state.active.reminderSentAt) return false;
+        const elapsed = Date.now() - new Date(state.active.start).getTime();
+        if (!Number.isFinite(elapsed) || elapsed < thirtyMinuteSignalMs) return false;
+        state.active.reminderSentAt = new Date().toISOString();
+        saveState();
+        logAction(`30m check-in ${categoryShortLabel(state.active.categoryId)}`);
+        notifyThirtyMinuteCheckin(state.active);
+        return true;
+      }
+
+      async function notifyThirtyMinuteCheckin(active) {
+        if (!("Notification" in window) || Notification.permission !== "granted") return;
+        const title = `${categoryShortLabel(active.categoryId)} · 30 minutes`;
+        const options = {
+          body: "Check in: continue, switch, or end this block.",
+          tag: `timeblock-30m-${active.id}`,
+          renotify: true,
+        };
+        try {
+          const registration = await navigator.serviceWorker?.getRegistration();
+          if (registration?.showNotification) await registration.showNotification(title, options);
+          else new Notification(title, options);
+        } catch (error) {
+          // The in-app signal remains the reliable fallback.
+        }
+      }
+
+      async function enableFocusAlerts() {
+        if (!("Notification" in window)) {
+          els.focusSignalStatus.textContent = "In-app signal only";
+          els.enableFocusAlertsButton.disabled = true;
+          return;
+        }
+        try {
+          await Notification.requestPermission();
+        } catch (error) {
+          // iOS can reject permission outside a Home Screen web app.
+        }
+        renderFocusSignalStatus();
+      }
+
+      function renderFocusSignalStatus() {
+        if (!("Notification" in window)) {
+          els.focusSignalStatus.textContent = "In-app signal on";
+          els.enableFocusAlertsButton.hidden = true;
+          return;
+        }
+        const permission = Notification.permission;
+        els.enableFocusAlertsButton.hidden = permission === "granted";
+        els.enableFocusAlertsButton.disabled = permission === "denied";
+        els.focusSignalStatus.textContent = permission === "granted" ? "30m alerts enabled" : "In-app signal on";
       }
 
       function renderLastBlock() {
@@ -1951,6 +2063,7 @@
         state.plan = [];
         state.actual = [];
         state.active = null;
+        scheduleActiveSignal();
         state.google = defaultGoogleState();
         state.syncQueue = [];
         state.actionLog = [];

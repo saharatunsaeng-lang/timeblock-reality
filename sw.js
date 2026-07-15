@@ -1,8 +1,8 @@
-const cacheName = "timeblock-reality-v14-sync-reliability";
+const cacheName = "timeblock-reality-v15-focus-signal";
 const assets = [
-  "./?v=20260712-sync-reliability",
-  "index.html?v=20260712-sync-reliability",
-  "manifest.webmanifest?v=20260712-sync-reliability",
+  "./?v=20260715-focus-signal",
+  "index.html?v=20260715-focus-signal",
+  "manifest.webmanifest?v=20260715-focus-signal",
   "icon.svg",
 ];
 

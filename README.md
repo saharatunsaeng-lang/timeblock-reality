@@ -46,6 +46,7 @@ Runtime behavior:
 - `Sync Plan` imports the current week from the 8 LD8 calendars.
 - New actual blocks are written server-side to `Actual-Time Log`.
 - No `Connect GCal` step is needed for normal Start/End capture.
+- A 30-minute focus check-in appears in Capture for every active block. Optional browser alerts require a user tap to grant notification permission and are most reliable while the PWA remains active; fully backgrounded iPhone alerts require a push service and are intentionally out of scope.
 
 ## Current scope
 
@@ -56,6 +57,7 @@ Runtime behavior:
 - Manual plan blocks.
 - Today view for plan vs actual.
 - Weekly category delta.
+- 30-minute focus signal with optional device alerts.
 - Apps Script Calendar sync.
 
 ## Sync reliability
