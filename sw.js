@@ -1,8 +1,8 @@
-const cacheName = "timeblock-reality-v16-live-timer";
+const cacheName = "timeblock-reality-v17-home-badge";
 const assets = [
-  "./?v=20260715-live-timer",
-  "index.html?v=20260715-live-timer",
-  "manifest.webmanifest?v=20260715-live-timer",
+  "./?v=20260715-home-badge",
+  "index.html?v=20260715-home-badge",
+  "manifest.webmanifest?v=20260715-home-badge",
   "icon.svg",
 ];
 

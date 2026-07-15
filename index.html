@@ -972,6 +972,7 @@
         initGoogleClient();
         render();
         scheduleActiveSignal();
+        syncHomeScreenBadge();
         silentReconnectGoogle();
         drainPersistentSyncQueue();
         refreshStatus();
@@ -1066,6 +1067,7 @@
             start: new Date().toISOString(),
           };
           saveState();
+          syncHomeScreenBadge();
           scheduleActiveSignal();
           render();
           if (endedBlock) queueActualSync(endedBlock);
@@ -1102,6 +1104,7 @@
         if (end.getTime() - start.getTime() < 60 * 1000) {
           state.active = null;
           saveState();
+          syncHomeScreenBadge();
           if (googleEventId) queueActiveDeletion(googleEventId);
           return null;
         }
@@ -1119,6 +1122,7 @@
         state.actual.push(block);
         state.active = null;
         saveState();
+        syncHomeScreenBadge();
         return block;
       }
 
@@ -1463,6 +1467,7 @@
         if (result.calendars) applyCalendarStatus(result.calendars);
         pruneActualHistory();
         saveState();
+        syncHomeScreenBadge();
         scheduleActiveSignal();
         render();
       }
@@ -1591,9 +1596,20 @@
         if (!Number.isFinite(elapsed) || elapsed < thirtyMinuteSignalMs) return false;
         state.active.reminderSentAt = new Date().toISOString();
         saveState();
+        syncHomeScreenBadge();
         logAction(`30m check-in ${categoryShortLabel(state.active.categoryId)}`);
         notifyThirtyMinuteCheckin(state.active);
         return true;
+      }
+
+      async function syncHomeScreenBadge() {
+        if (!("setAppBadge" in navigator) || !("clearAppBadge" in navigator)) return;
+        try {
+          if (state.active?.reminderSentAt) await navigator.setAppBadge(1);
+          else await navigator.clearAppBadge();
+        } catch (error) {
+          // Badging is only available to supported Home Screen web apps with notification permission.
+        }
       }
 
       async function notifyThirtyMinuteCheckin(active) {
@@ -2095,6 +2111,7 @@
         state.actual = [];
         state.active = null;
         scheduleActiveSignal();
+        syncHomeScreenBadge();
         state.google = defaultGoogleState();
         state.syncQueue = [];
         state.actionLog = [];
