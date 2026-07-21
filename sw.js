@@ -1,8 +1,9 @@
-const cacheName = "timeblock-reality-v19-continuous-blocks";
+const cacheName = "timeblock-reality-v20-background-push";
 const assets = [
-  "./?v=20260721-continuous-blocks",
-  "index.html?v=20260721-continuous-blocks",
-  "manifest.webmanifest?v=20260721-continuous-blocks",
+  "./?v=20260721-background-push",
+  "index.html?v=20260721-background-push",
+  "manifest.webmanifest?v=20260721-background-push",
+  "push-config.js?v=20260721-background-push",
   "icon.svg",
 ];
 
@@ -39,4 +40,33 @@ self.addEventListener("fetch", (event) => {
   }
 
   event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
+});
+
+self.addEventListener("push", (event) => {
+  const data = event.data ? event.data.json() : {};
+  const tasks = [
+    self.registration.showNotification(data.title || "TimeBlock check-in", {
+      body: data.body || "Continue, switch, or end this block.",
+      icon: "icon.svg",
+      tag: data.tag,
+      data: data.data || {},
+      renotify: true,
+    }),
+  ];
+  if ("setAppBadge" in self.navigator && Number.isFinite(Number(data.badge))) {
+    tasks.push(self.navigator.setAppBadge(Number(data.badge)));
+  }
+  event.waitUntil(Promise.all(tasks));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if (client.url.startsWith(self.location.origin) && "focus" in client) return client.focus();
+      }
+      return self.clients.openWindow("./?v=20260721-background-push");
+    }),
+  );
 });

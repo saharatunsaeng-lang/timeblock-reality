@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260715-live-timer" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260721-background-push" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -860,6 +860,7 @@
       </form>
     </section>
 
+    <script src="push-config.js?v=20260721-background-push"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -877,6 +878,8 @@
       const googleClientId = "809951458535-dg6gjp5nk4fjrgs1kngrger4cni90er9.apps.googleusercontent.com";
       const googleScopes = "https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events";
       const thirtyMinuteSignalMs = 30 * 60 * 1000;
+      const pushServiceUrl = String(window.TIMEBLOCK_PUSH_CONFIG?.endpoint || "").replace(/\/$/, "");
+      const pushInstallationKey = `${storageKey}-push-installation`;
       const state = loadState();
       let tokenClient = null;
       let googleAccessToken = "";
@@ -892,6 +895,8 @@
       let persistentSyncInFlight = false;
       let fixTargetBlockId = "";
       let activeSignalTimer = 0;
+      let backgroundPushReady = false;
+      let backgroundPushError = "";
 
       const els = {
         viewEyebrow: document.querySelector("#viewEyebrow"),
@@ -977,7 +982,11 @@
         drainPersistentSyncQueue();
         refreshStatus();
         setInterval(tickActiveTimer, 1000);
-        if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+        if ("serviceWorker" in navigator) {
+          navigator.serviceWorker.register("sw.js")
+            .then(() => refreshBackgroundPush())
+            .catch(() => {});
+        }
       }
 
       function bindEvents() {
@@ -1070,6 +1079,7 @@
           };
           saveState();
           syncHomeScreenBadge();
+          syncBackgroundPushState();
           scheduleActiveSignal();
           render();
           if (endedBlock) queueActualSync(endedBlock);
@@ -1088,6 +1098,7 @@
         try {
           logAction("end active");
           const block = finishActiveBlockLocally();
+          syncBackgroundPushState();
           scheduleActiveSignal();
           if (!block) return;
           queueActualSync(block);
@@ -1480,6 +1491,7 @@
         pruneActualHistory();
         saveState();
         syncHomeScreenBadge();
+        syncBackgroundPushState();
         scheduleActiveSignal();
         render();
       }
@@ -1629,7 +1641,7 @@
         saveState();
         syncHomeScreenBadge();
         logAction(`30m check-in ${dueCheckins} ${categoryShortLabel(state.active.categoryId)}`);
-        notifyThirtyMinuteCheckin(state.active, dueCheckins);
+        if (!backgroundPushReady) notifyThirtyMinuteCheckin(state.active, dueCheckins);
         return true;
       }
 
@@ -1679,6 +1691,7 @@
         } catch (error) {
           // iOS can reject permission outside a Home Screen web app.
         }
+        await refreshBackgroundPush();
         renderFocusSignalStatus();
       }
 
@@ -1691,7 +1704,98 @@
         const permission = Notification.permission;
         els.enableFocusAlertsButton.hidden = permission === "granted";
         els.enableFocusAlertsButton.disabled = permission === "denied";
-        els.focusSignalStatus.textContent = permission === "granted" ? "30m alerts enabled" : "In-app signal on";
+        if (permission !== "granted") {
+          els.focusSignalStatus.textContent = "In-app signal on";
+        } else if (backgroundPushReady) {
+          els.focusSignalStatus.textContent = "Background 30m alerts enabled";
+        } else if (pushServiceUrl && backgroundPushError) {
+          els.focusSignalStatus.textContent = "Alert permission granted - retrying push";
+        } else if (!pushServiceUrl) {
+          els.focusSignalStatus.textContent = "In-app 30m alerts enabled";
+        } else {
+          els.focusSignalStatus.textContent = "Connecting background alerts";
+        }
+      }
+
+      function getPushInstallationId() {
+        let installationId = localStorage.getItem(pushInstallationKey);
+        if (!installationId) {
+          installationId = crypto.randomUUID();
+          localStorage.setItem(pushInstallationKey, installationId);
+        }
+        return installationId;
+      }
+
+      async function refreshBackgroundPush() {
+        if (!pushServiceUrl || !("PushManager" in window) || !("serviceWorker" in navigator) || !("Notification" in window) || Notification.permission !== "granted") return false;
+        try {
+          const config = await pushRequest("/v1/config", { method: "GET" });
+          if (!config.vapidPublicKey) throw new Error("Push service is not configured");
+          const registration = await navigator.serviceWorker.ready;
+          let subscription = await registration.pushManager.getSubscription();
+          if (!subscription) {
+            subscription = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: base64urlToUint8Array(config.vapidPublicKey),
+            });
+          }
+          await pushRequest("/v1/register", {
+            method: "POST",
+            body: { installationId: getPushInstallationId(), subscription: subscription.toJSON() },
+          });
+          backgroundPushReady = true;
+          backgroundPushError = "";
+          await syncBackgroundPushState();
+          renderFocusSignalStatus();
+          return true;
+        } catch (error) {
+          backgroundPushReady = false;
+          backgroundPushError = readableError(error);
+          renderFocusSignalStatus();
+          return false;
+        }
+      }
+
+      async function syncBackgroundPushState() {
+        if (!backgroundPushReady) return false;
+        try {
+          if (state.active) {
+            await pushRequest("/v1/start", {
+              method: "POST",
+              body: {
+                installationId: getPushInstallationId(),
+                active: { id: state.active.id, categoryId: state.active.categoryId, start: state.active.start },
+              },
+            });
+          } else {
+            await pushRequest("/v1/end", {
+              method: "POST",
+              body: { installationId: getPushInstallationId(), activeId: "" },
+            });
+          }
+          return true;
+        } catch (error) {
+          backgroundPushReady = false;
+          backgroundPushError = readableError(error);
+          renderFocusSignalStatus();
+          return false;
+        }
+      }
+
+      async function pushRequest(path, options = {}) {
+        const response = await fetch(`${pushServiceUrl}${path}`, {
+          method: options.method || "POST",
+          headers: options.body ? { "content-type": "application/json" } : {},
+          body: options.body ? JSON.stringify(options.body) : undefined,
+        });
+        if (!response.ok) throw new Error(`Push service failed: ${response.status}`);
+        return response.json();
+      }
+
+      function base64urlToUint8Array(value) {
+        const padded = value + "=".repeat((4 - (value.length % 4)) % 4);
+        const binary = atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
+        return Uint8Array.from(binary, (character) => character.charCodeAt(0));
       }
 
       function renderLastBlock() {
@@ -2151,6 +2255,7 @@
         state.active = null;
         scheduleActiveSignal();
         syncHomeScreenBadge();
+        syncBackgroundPushState();
         state.google = defaultGoogleState();
         state.syncQueue = [];
         state.actionLog = [];

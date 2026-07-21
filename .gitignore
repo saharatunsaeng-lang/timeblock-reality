@@ -2,3 +2,5 @@ work/
 outputs/
 .DS_Store
 .clasp.json
+push-worker/.dev.vars
+push-worker/node_modules/

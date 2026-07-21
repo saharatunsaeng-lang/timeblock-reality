@@ -1,0 +1,20 @@
+{
+  "name": "timeblock-reality-push",
+  "main": "src/index.js",
+  "compatibility_date": "2026-07-21",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "TIMEBLOCK_SIGNAL",
+        "class_name": "TimeBlockSignal"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["TimeBlockSignal"]
+    }
+  ]
+}
