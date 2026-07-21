@@ -1,0 +1,6 @@
+# Never commit a real .dev.vars file.
+GOOGLE_CLIENT_ID=""
+GOOGLE_CLIENT_SECRET=""
+HERMES_API_TOKEN=""
+# Base64url encoded 32-byte key. Generate with: openssl rand -base64 32 | tr '+/' '-_' | tr -d '='
+TOKEN_ENCRYPTION_KEY=""

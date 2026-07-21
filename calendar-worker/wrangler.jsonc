@@ -1,0 +1,27 @@
+{
+  "name": "timeblock-calendar-connector",
+  "main": "src/index.js",
+  "compatibility_date": "2026-07-21",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CALENDAR_CREDENTIAL",
+        "class_name": "CalendarCredential"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["CalendarCredential"]
+    }
+  ],
+  "secrets": {
+    "required": [
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET",
+      "HERMES_API_TOKEN",
+      "TOKEN_ENCRYPTION_KEY"
+    ]
+  }
+}

@@ -5,3 +5,7 @@ outputs/
 push-worker/.dev.vars
 push-worker/node_modules/
 push-worker/.wrangler/
+calendar-worker/.dev.vars
+calendar-worker/node_modules/
+calendar-worker/.wrangler/
+hermes/__pycache__/
