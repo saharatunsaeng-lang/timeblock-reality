@@ -1060,11 +1060,13 @@
         activateTab("capture");
         try {
           logAction(`start ${categoryShortLabel(categoryId)}`);
-          const endedBlock = finishActiveBlockLocally();
+          // One timestamp makes a domain switch continuous: the old block ends exactly when the next starts.
+          const transitionAt = new Date();
+          const endedBlock = finishActiveBlockLocally(transitionAt);
           state.active = {
             id: crypto.randomUUID(),
             categoryId,
-            start: new Date().toISOString(),
+            start: transitionAt.toISOString(),
           };
           saveState();
           syncHomeScreenBadge();
@@ -1096,9 +1098,9 @@
         }
       }
 
-      function finishActiveBlockLocally() {
+      function finishActiveBlockLocally(endAt = new Date()) {
         if (!state.active) return null;
-        const end = new Date();
+        const end = new Date(endAt);
         const start = new Date(state.active.start);
         const googleEventId = state.active.googleEventId || "";
         if (end.getTime() - start.getTime() < 60 * 1000) {
@@ -1364,6 +1366,15 @@
         const block = state.actual.find((item) => item.id === fixTargetBlockId);
         if (!block) return;
         const fixed = buildBlockFromForm(els.manualCategory.value, els.manualStart.value, els.manualEnd.value, els.manualNote.value);
+        const overlap = findActualOverlap(fixed, block.id);
+        if (overlap) {
+          alert(`Actual cannot overlap ${categoryShortLabel(overlap.categoryId)} ${formatTime(overlap.start)}-${formatTime(overlap.end)}.`);
+          return;
+        }
+        if (state.active && rangesOverlap(fixed.start, fixed.end, state.active.start, new Date().toISOString())) {
+          alert(`Actual cannot overlap the running ${categoryShortLabel(state.active.categoryId)} block.`);
+          return;
+        }
         block.categoryId = fixed.categoryId;
         block.note = fixed.note;
         block.start = fixed.start;
@@ -1461,6 +1472,7 @@
           const incomingActive = resolveIncomingActive(result.active);
           if (incomingActive?.id === state.active?.id && state.active.reminderSentAt) {
             incomingActive.reminderSentAt = state.active.reminderSentAt;
+            incomingActive.reminderCount = getReminderCount(state.active);
           }
           state.active = incomingActive;
         }
@@ -1535,6 +1547,19 @@
         };
       }
 
+      function findActualOverlap(candidate, ignoredBlockId = "") {
+        return state.actual.find((block) => block.id !== ignoredBlockId && rangesOverlap(candidate.start, candidate.end, block.start, block.end));
+      }
+
+      function rangesOverlap(firstStart, firstEnd, secondStart, secondEnd) {
+        const start = new Date(firstStart).getTime();
+        const end = new Date(firstEnd).getTime();
+        const otherStart = new Date(secondStart).getTime();
+        const otherEnd = new Date(secondEnd).getTime();
+        return Number.isFinite(start) && Number.isFinite(end) && Number.isFinite(otherStart) && Number.isFinite(otherEnd)
+          && start < otherEnd && end > otherStart;
+      }
+
       function render() {
         renderRecovery();
         renderActive();
@@ -1548,9 +1573,11 @@
 
       function renderActive() {
         const locked = isCaptureLocked();
-        const hasCheckin = Boolean(state.active?.reminderSentAt);
+        const reminderCount = getReminderCount(state.active);
+        const hasCheckin = reminderCount > 0;
         els.nowCard.classList.toggle("has-checkin", hasCheckin);
         els.activeSignal.hidden = !hasCheckin;
+        els.activeSignal.textContent = hasCheckin ? `30m ×${reminderCount}` : "30m check-in";
         if (!state.active) {
           els.activeTitle.textContent = bootstrapReady ? "No active block" : "Syncing with GCal";
           els.runningLabel.hidden = true;
@@ -1581,9 +1608,11 @@
       function scheduleActiveSignal() {
         window.clearTimeout(activeSignalTimer);
         activeSignalTimer = 0;
-        if (!state.active || state.active.reminderSentAt) return;
-        const elapsed = Date.now() - new Date(state.active.start).getTime();
-        const delay = Math.max(0, thirtyMinuteSignalMs - elapsed);
+        if (!state.active) return;
+        const startedAt = new Date(state.active.start).getTime();
+        if (!Number.isFinite(startedAt)) return;
+        const nextCheckin = Math.max(1, getReminderCount(state.active) + 1);
+        const delay = Math.max(0, startedAt + nextCheckin * thirtyMinuteSignalMs - Date.now());
         activeSignalTimer = window.setTimeout(() => {
           if (triggerThirtyMinuteSignal()) render();
           scheduleActiveSignal();
@@ -1591,33 +1620,43 @@
       }
 
       function triggerThirtyMinuteSignal() {
-        if (!state.active || state.active.reminderSentAt) return false;
+        if (!state.active) return false;
         const elapsed = Date.now() - new Date(state.active.start).getTime();
-        if (!Number.isFinite(elapsed) || elapsed < thirtyMinuteSignalMs) return false;
+        const dueCheckins = Math.floor(elapsed / thirtyMinuteSignalMs);
+        if (!Number.isFinite(elapsed) || dueCheckins <= getReminderCount(state.active)) return false;
+        state.active.reminderCount = dueCheckins;
         state.active.reminderSentAt = new Date().toISOString();
         saveState();
         syncHomeScreenBadge();
-        logAction(`30m check-in ${categoryShortLabel(state.active.categoryId)}`);
-        notifyThirtyMinuteCheckin(state.active);
+        logAction(`30m check-in ${dueCheckins} ${categoryShortLabel(state.active.categoryId)}`);
+        notifyThirtyMinuteCheckin(state.active, dueCheckins);
         return true;
+      }
+
+      function getReminderCount(active) {
+        if (!active) return 0;
+        const count = Number(active.reminderCount);
+        if (Number.isInteger(count) && count > 0) return count;
+        return active.reminderSentAt ? 1 : 0;
       }
 
       async function syncHomeScreenBadge() {
         if (!("setAppBadge" in navigator) || !("clearAppBadge" in navigator)) return;
         try {
-          if (state.active?.reminderSentAt) await navigator.setAppBadge(1);
+          const reminderCount = getReminderCount(state.active);
+          if (reminderCount) await navigator.setAppBadge(reminderCount);
           else await navigator.clearAppBadge();
         } catch (error) {
           // Badging is only available to supported Home Screen web apps with notification permission.
         }
       }
 
-      async function notifyThirtyMinuteCheckin(active) {
+      async function notifyThirtyMinuteCheckin(active, reminderCount) {
         if (!("Notification" in window) || Notification.permission !== "granted") return;
-        const title = `${categoryShortLabel(active.categoryId)} · 30 minutes`;
+        const title = `${categoryShortLabel(active.categoryId)} · ${reminderCount * 30} minutes`;
         const options = {
-          body: "Check in: continue, switch, or end this block.",
-          tag: `timeblock-30m-${active.id}`,
+          body: `Check-in ${reminderCount}: continue, switch, or end this block.`,
+          tag: `timeblock-30m-${active.id}-${reminderCount}`,
           renotify: true,
         };
         try {

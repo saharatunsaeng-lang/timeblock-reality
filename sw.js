@@ -1,8 +1,8 @@
-const cacheName = "timeblock-reality-v18-last-duration";
+const cacheName = "timeblock-reality-v19-continuous-blocks";
 const assets = [
-  "./?v=20260715-last-duration",
-  "index.html?v=20260715-last-duration",
-  "manifest.webmanifest?v=20260715-last-duration",
+  "./?v=20260721-continuous-blocks",
+  "index.html?v=20260721-continuous-blocks",
+  "manifest.webmanifest?v=20260721-continuous-blocks",
   "icon.svg",
 ];
 
