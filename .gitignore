@@ -4,3 +4,4 @@ outputs/
 .clasp.json
 push-worker/.dev.vars
 push-worker/node_modules/
+push-worker/.wrangler/
