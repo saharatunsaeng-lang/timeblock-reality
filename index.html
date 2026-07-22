@@ -761,6 +761,7 @@
               <strong id="focusSignalStatus">In-app signal on</strong>
             </div>
             <button id="enableFocusAlertsButton" class="secondary-button" type="button">Enable alert</button>
+            <button id="testFocusAlertButton" class="secondary-button" type="button" hidden>Test alert</button>
           </div>
         </section>
 
@@ -939,6 +940,7 @@
         memoryText: document.querySelector("#memoryText"),
         focusSignalStatus: document.querySelector("#focusSignalStatus"),
         enableFocusAlertsButton: document.querySelector("#enableFocusAlertsButton"),
+        testFocusAlertButton: document.querySelector("#testFocusAlertButton"),
         syncPlanButton: document.querySelector("#syncPlanButton"),
         syncReviewButton: document.querySelector("#syncReviewButton"),
         syncSetupPlanButton: document.querySelector("#syncSetupPlanButton"),
@@ -1006,6 +1008,7 @@
         els.shareMemoryButton.addEventListener("click", shareWeeklyMemory);
         els.downloadMemoryButton.addEventListener("click", downloadWeeklyMemory);
         els.enableFocusAlertsButton.addEventListener("click", enableFocusAlerts);
+        els.testFocusAlertButton.addEventListener("click", sendFocusAlertTest);
         els.refreshStatusButton.addEventListener("click", refreshStatus);
         els.connectGoogleButton.addEventListener("click", connectGoogle);
         els.resetButton.addEventListener("click", resetLocalData);
@@ -1695,6 +1698,23 @@
         renderFocusSignalStatus();
       }
 
+      async function sendFocusAlertTest() {
+        els.testFocusAlertButton.disabled = true;
+        try {
+          await refreshBackgroundPush();
+          if (!backgroundPushReady) throw new Error(backgroundPushError || "Background alerts are not connected");
+          const result = await pushRequest("/v1/test", {
+            method: "POST",
+            body: { installationId: getPushInstallationId() },
+          });
+          els.focusSignalStatus.textContent = result.delivered ? "Test alert sent" : "No device subscription found";
+        } catch (error) {
+          els.focusSignalStatus.textContent = "Test alert could not be sent";
+        } finally {
+          els.testFocusAlertButton.disabled = false;
+        }
+      }
+
       function renderFocusSignalStatus() {
         if (!("Notification" in window)) {
           els.focusSignalStatus.textContent = "In-app signal on";
@@ -1704,6 +1724,7 @@
         const permission = Notification.permission;
         els.enableFocusAlertsButton.hidden = permission === "granted";
         els.enableFocusAlertsButton.disabled = permission === "denied";
+        els.testFocusAlertButton.hidden = !(permission === "granted" && backgroundPushReady);
         if (permission !== "granted") {
           els.focusSignalStatus.textContent = "In-app signal on";
         } else if (backgroundPushReady) {

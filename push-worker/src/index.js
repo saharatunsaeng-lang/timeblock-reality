@@ -52,6 +52,7 @@ export class TimeBlockSignal {
     if (url.pathname === "/v1/register") return this.register(body.value, origin);
     if (url.pathname === "/v1/start") return this.start(body.value, origin);
     if (url.pathname === "/v1/end") return this.end(body.value, origin);
+    if (url.pathname === "/v1/test") return this.test(origin);
     return json({ error: "Not found" }, 404, origin);
   }
 
@@ -85,6 +86,16 @@ export class TimeBlockSignal {
     return json({ ok: true }, 200, origin);
   }
 
+  async test(origin) {
+    const delivered = await this.sendPush({
+      title: "TimeBlock test alert",
+      body: "Notifications are reaching this iPhone.",
+      tag: `timeblock-test-${Date.now()}`,
+      data: { type: "test" },
+    });
+    return json({ ok: true, delivered }, 200, origin);
+  }
+
   async alarm() {
     const active = await this.state.storage.get("active");
     if (!active) return;
@@ -113,24 +124,28 @@ export class TimeBlockSignal {
   async sendCheckin(active, reminderCount) {
     const subscriptions = await this.state.storage.get("subscriptions") || [];
     if (!subscriptions.length) return;
-
-    webpush.setVapidDetails(
-      this.env.VAPID_SUBJECT,
-      this.env.VAPID_PUBLIC_KEY,
-      this.env.VAPID_PRIVATE_KEY,
-    );
-    const payload = JSON.stringify({
+    await this.sendPush({
       title: `${categoryCodes[active.categoryId] || active.categoryId} · ${reminderCount * 30} minutes`,
       body: `Check-in ${reminderCount}: continue, switch, or end this block.`,
       tag: `timeblock-${active.id}-${reminderCount}`,
       badge: reminderCount,
       data: { activeId: active.id, reminderCount },
     });
+  }
+
+  async sendPush(payload) {
+    const subscriptions = await this.state.storage.get("subscriptions") || [];
+    if (!subscriptions.length) return 0;
+    webpush.setVapidDetails(
+      this.env.VAPID_SUBJECT,
+      this.env.VAPID_PUBLIC_KEY,
+      this.env.VAPID_PRIVATE_KEY,
+    );
     const deadEndpoints = [];
 
     await Promise.all(subscriptions.map(async (subscription) => {
       try {
-        await webpush.sendNotification(subscription, payload);
+        await webpush.sendNotification(subscription, JSON.stringify(payload));
       } catch (error) {
         if (error?.statusCode === 404 || error?.statusCode === 410) deadEndpoints.push(subscription.endpoint);
         else throw error;
@@ -140,6 +155,7 @@ export class TimeBlockSignal {
     if (deadEndpoints.length) {
       await this.state.storage.put("subscriptions", subscriptions.filter((item) => !deadEndpoints.includes(item.endpoint)));
     }
+    return subscriptions.length - deadEndpoints.length;
   }
 }
 
