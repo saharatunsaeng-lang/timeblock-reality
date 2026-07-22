@@ -1082,7 +1082,7 @@
           };
           saveState();
           syncHomeScreenBadge();
-          syncBackgroundPushState();
+          syncBackgroundPushState({ keepalive: true });
           scheduleActiveSignal();
           render();
           if (endedBlock) queueActualSync(endedBlock);
@@ -1101,7 +1101,7 @@
         try {
           logAction("end active");
           const block = finishActiveBlockLocally();
-          syncBackgroundPushState();
+          syncBackgroundPushState({ keepalive: true });
           scheduleActiveSignal();
           if (!block) return;
           queueActualSync(block);
@@ -1380,15 +1380,6 @@
         const block = state.actual.find((item) => item.id === fixTargetBlockId);
         if (!block) return;
         const fixed = buildBlockFromForm(els.manualCategory.value, els.manualStart.value, els.manualEnd.value, els.manualNote.value);
-        const overlap = findActualOverlap(fixed, block.id);
-        if (overlap) {
-          alert(`Actual cannot overlap ${categoryShortLabel(overlap.categoryId)} ${formatTime(overlap.start)}-${formatTime(overlap.end)}.`);
-          return;
-        }
-        if (state.active && rangesOverlap(fixed.start, fixed.end, state.active.start, new Date().toISOString())) {
-          alert(`Actual cannot overlap the running ${categoryShortLabel(state.active.categoryId)} block.`);
-          return;
-        }
         block.categoryId = fixed.categoryId;
         block.note = fixed.note;
         block.start = fixed.start;
@@ -1560,19 +1551,6 @@
           start: start.toISOString(),
           end: end.toISOString(),
         };
-      }
-
-      function findActualOverlap(candidate, ignoredBlockId = "") {
-        return state.actual.find((block) => block.id !== ignoredBlockId && rangesOverlap(candidate.start, candidate.end, block.start, block.end));
-      }
-
-      function rangesOverlap(firstStart, firstEnd, secondStart, secondEnd) {
-        const start = new Date(firstStart).getTime();
-        const end = new Date(firstEnd).getTime();
-        const otherStart = new Date(secondStart).getTime();
-        const otherEnd = new Date(secondEnd).getTime();
-        return Number.isFinite(start) && Number.isFinite(end) && Number.isFinite(otherStart) && Number.isFinite(otherEnd)
-          && start < otherEnd && end > otherStart;
       }
 
       function render() {
@@ -1777,12 +1755,13 @@
         }
       }
 
-      async function syncBackgroundPushState() {
+      async function syncBackgroundPushState({ keepalive = false } = {}) {
         if (!backgroundPushReady) return false;
         try {
           if (state.active) {
             await pushRequest("/v1/start", {
               method: "POST",
+              keepalive,
               body: {
                 installationId: getPushInstallationId(),
                 active: { id: state.active.id, categoryId: state.active.categoryId, start: state.active.start },
@@ -1791,6 +1770,7 @@
           } else {
             await pushRequest("/v1/end", {
               method: "POST",
+              keepalive,
               body: { installationId: getPushInstallationId(), activeId: "" },
             });
           }
@@ -1808,6 +1788,7 @@
           method: options.method || "POST",
           headers: options.body ? { "content-type": "application/json" } : {},
           body: options.body ? JSON.stringify(options.body) : undefined,
+          keepalive: options.keepalive === true,
         });
         if (!response.ok) throw new Error(`Push service failed: ${response.status}`);
         return response.json();
