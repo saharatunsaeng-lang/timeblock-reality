@@ -1,9 +1,9 @@
-const cacheName = "timeblock-reality-v20-background-push";
+const cacheName = "timeblock-reality-v21-production-push";
 const assets = [
-  "./?v=20260721-background-push",
-  "index.html?v=20260721-background-push",
-  "manifest.webmanifest?v=20260721-background-push",
-  "push-config.js?v=20260721-background-push",
+  "./?v=20260722-production-push",
+  "index.html?v=20260722-production-push",
+  "manifest.webmanifest?v=20260722-production-push",
+  "push-config.js?v=20260722-production-push",
   "icon.svg",
 ];
 
@@ -66,7 +66,7 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of clients) {
         if (client.url.startsWith(self.location.origin) && "focus" in client) return client.focus();
       }
-      return self.clients.openWindow("./?v=20260721-background-push");
+      return self.clients.openWindow("./?v=20260722-production-push");
     }),
   );
 });
