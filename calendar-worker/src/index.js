@@ -3,6 +3,7 @@ const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar";
 const PLAN_CALENDARS = ["1 BD", "2 SP", "3 MM", "4 RS", "5 CM", "6 FN", "7 CT", "8 LS"];
+const ACTUAL_CALENDARS = ["Actual-Time Log", "Actual - Time Log"];
 const STATE_TTL_MS = 10 * 60 * 1000;
 const CONFIRMATION_TTL_MS = 30 * 60 * 1000;
 
@@ -110,7 +111,7 @@ export class CalendarCredential {
     const end = validDateKey(url.searchParams.get("end"));
     if (!source || !end || source >= end) return json({ error: "Use start and end as YYYY-MM-DD." }, 400);
     const requested = url.searchParams.getAll("calendar");
-    const calendars = await this.planCalendarMap();
+    const calendars = await this.readableCalendarMap();
     const names = requested.length ? requested : PLAN_CALENDARS;
     const result = [];
     for (const name of names) {
@@ -226,8 +227,14 @@ export class CalendarCredential {
   }
 
   async planCalendarMap() {
+    const calendars = await this.readableCalendarMap();
+    return new Map([...calendars].filter(([summary]) => PLAN_CALENDARS.includes(summary)));
+  }
+
+  async readableCalendarMap() {
     const data = await this.google("/users/me/calendarList?minAccessRole=reader");
-    return new Map((data.items || []).filter((item) => PLAN_CALENDARS.includes(item.summary)).map((item) => [item.summary, item]));
+    const readableNames = new Set([...PLAN_CALENDARS, ...ACTUAL_CALENDARS]);
+    return new Map((data.items || []).filter((item) => readableNames.has(item.summary)).map((item) => [item.summary, item]));
   }
 
   async listEvents(calendarId, start, end) {
