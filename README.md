@@ -73,3 +73,22 @@ Runtime behavior:
 
 - Push weekly review into the secondbrain memory app.
 - Read actual history back from `Actual-Time Log`.
+
+## Capacity learning gate
+
+Do not estimate daily capacity from raw calendar totals alone. Run the read-only
+quality gate first; it rejects stale data, invalid blocks, and overlapping time:
+
+```bash
+python3 scripts/audit_actual_time_log.py
+```
+
+It reports both raw minutes and non-overlapping coverage. Capacity learning may
+begin only when `learningReady` is `true`.
+
+After a capture reliability fix, start a clean baseline from the deployment
+date instead of mutating historical actuals. For the current rollout:
+
+```bash
+python3 scripts/audit_actual_time_log.py --start 2026-07-24
+```
