@@ -1157,6 +1157,11 @@
         if (!block) return;
         markBlockSync(block, "pending");
         addPersistentSyncTask(block);
+        if (!googleAccessToken) {
+          updateSyncStatus(state.google.connected ? "Reconnect Google to sync" : "Connect Google to sync");
+          render();
+          return;
+        }
         drainPersistentSyncQueue();
       }
 
@@ -1250,11 +1255,19 @@
         if (operationInFlight) return;
         const block = getLastActualBlock();
         if (!block) return;
+        if (!googleAccessToken) {
+          updateSyncStatus(state.google.connected ? "Reconnect Google to sync" : "Connect Google to sync");
+          await connectGoogle();
+          return;
+        }
         queueActualSync(block);
       }
 
       async function drainPersistentSyncQueue() {
         if (!googleAccessToken) {
+          if (state.syncQueue.length) {
+            updateSyncStatus(state.google.connected ? "Reconnect Google to sync" : "Connect Google to sync");
+          }
           render();
           return;
         }
@@ -1811,17 +1824,22 @@
           els.lastSyncStatus.className = "status-chip warn";
           els.fixLastButton.disabled = true;
           els.syncLastButton.disabled = true;
+          els.syncLastButton.textContent = "Retry";
           closeFixSheet();
           return;
         }
         els.lastBlockTitle.textContent = `${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)} · ${minutesBetween(block.start, block.end)}m`;
         const syncState = getBlockSyncState(block);
-        els.lastSyncStatus.textContent = syncState.label;
-        els.lastSyncStatus.className = `status-chip ${syncState.className}`;
-        els.lastBlockCard.classList.toggle("has-error", syncState.isError);
+        const needsReconnect = !syncState.isSynced && !syncState.isSyncing && !googleAccessToken;
+        els.lastSyncStatus.textContent = needsReconnect
+          ? (state.google.connected ? "Reconnect Google to sync" : "Connect Google to sync")
+          : syncState.label;
+        els.lastSyncStatus.className = `status-chip ${needsReconnect ? "warn" : syncState.className}`;
+        els.lastBlockCard.classList.toggle("has-error", syncState.isError && !needsReconnect);
         els.lastBlockCard.classList.toggle("is-syncing", syncState.isSyncing);
         els.fixLastButton.disabled = locked;
         els.syncLastButton.disabled = locked || syncState.isSynced || syncState.isSyncing;
+        els.syncLastButton.textContent = needsReconnect ? "Connect" : "Retry";
       }
 
       function renderToday() {
@@ -2367,7 +2385,7 @@
       async function connectGoogle() {
         if (googleAccessToken) return;
         try {
-          renderGoogleStatus("Opening Google...");
+          renderGoogleStatus(state.google.connected ? "Reconnecting to Google..." : "Opening Google...");
           await prepareGoogleClient();
           tokenClient.requestAccessToken({ prompt: state.google.connected ? "" : "consent" });
         } catch (error) {
