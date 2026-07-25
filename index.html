@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260725-switch-only" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260725-overnight-blocks" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -673,6 +673,10 @@
         background: rgba(255, 253, 250, 0.95);
         padding: 6px;
         box-shadow: 0 12px 30px rgba(35, 30, 20, 0.12);
+        /* iOS repaints a fixed bar lazily during momentum scrolling, which leaves it
+           stranded mid-screen on a long page. Its own layer keeps it pinned. */
+        transform: translateZ(0);
+        will-change: transform;
       }
 
       .nav-button {
@@ -963,7 +967,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20260725-switch-only"></script>
+    <script src="push-config.js?v=20260725-overnight-blocks"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -1964,9 +1968,13 @@
       }
 
       function renderToday() {
-        const day = todayDateKey();
-        const planBlocks = state.plan.filter((block) => dateKey(block.start) === day);
-        const actualBlocks = state.actual.filter((block) => dateKey(block.start) === day);
+        // Sleep is one block that runs past midnight, so filtering on the start date
+        // hid the whole night from the morning it belongs to. Take everything that
+        // overlaps today and show the part that falls inside it.
+        const dayStart = startOfToday();
+        const dayEnd = addDays(dayStart, 1);
+        const planBlocks = clipBlocksToDay(state.plan, dayStart, dayEnd);
+        const actualBlocks = clipBlocksToDay(state.actual, dayStart, dayEnd);
         const items = [...planBlocks, ...actualBlocks]
           .sort((a, b) => new Date(a.start) - new Date(b.start));
 
@@ -1981,6 +1989,26 @@
           return;
         }
         renderDayGrid(planBlocks, actualBlocks);
+      }
+
+      function startOfToday() {
+        const day = new Date();
+        day.setHours(0, 0, 0, 0);
+        return day;
+      }
+
+      function clipBlocksToDay(blocks, dayStart, dayEnd) {
+        return blocks.reduce((kept, block) => {
+          const start = new Date(block.start);
+          const end = new Date(block.end);
+          if (!(start < dayEnd && end > dayStart)) return kept;
+          const from = start < dayStart ? dayStart : start;
+          const to = end > dayEnd ? dayEnd : end;
+          if (to <= from) return kept;
+          // Keep the original id so editing still targets the real block.
+          kept.push({ ...block, start: from.toISOString(), end: to.toISOString() });
+          return kept;
+        }, []);
       }
 
       function renderDayGrid(planBlocks, actualBlocks) {
