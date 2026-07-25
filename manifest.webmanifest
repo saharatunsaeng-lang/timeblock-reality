@@ -1,7 +1,7 @@
 {
   "name": "TimeBlock Reality",
   "short_name": "TimeBlock",
-  "start_url": "./?v=20260725-edit-time-fix-2",
+  "start_url": "./?v=20260725-build-badge",
   "display": "standalone",
   "background_color": "#f7f3ea",
   "theme_color": "#f7f3ea",

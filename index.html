@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260725-edit-time-fix-2" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260725-build-badge" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -818,6 +818,12 @@
                 <strong id="lastLogStatus">No log yet</strong>
               </div>
             </div>
+            <div class="setting-row">
+              <div>
+                <span class="label">Build</span>
+                <strong id="buildStatus">-</strong>
+              </div>
+            </div>
           </div>
         </section>
       </section>
@@ -861,7 +867,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20260725-edit-time-fix-2"></script>
+    <script src="push-config.js?v=20260725-build-badge"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -961,6 +967,7 @@
         pendingSyncStatus: document.querySelector("#pendingSyncStatus"),
         retryAllButton: document.querySelector("#retryAllButton"),
         lastLogStatus: document.querySelector("#lastLogStatus"),
+        buildStatus: document.querySelector("#buildStatus"),
       };
 
       window.addEventListener("error", (event) => showRecovery(`App error: ${event.message || "Unknown error"}`));
@@ -984,6 +991,7 @@
         bindEvents();
         initGoogleClient();
         render();
+        renderBuildStatus();
         scheduleActiveSignal();
         syncHomeScreenBadge();
         silentReconnectGoogle();
@@ -1467,6 +1475,7 @@
         setDefaultTimes();
         triggerThirtyMinuteSignal();
         renderActive();
+        renderBuildStatus();
         scheduleActiveSignal();
         silentReconnectGoogle();
         drainPersistentSyncQueue();
@@ -2212,6 +2221,28 @@
         els.retryAllButton.disabled = operationInFlight || persistentSyncInFlight || !pending;
         const last = state.actionLog[0];
         els.lastLogStatus.textContent = last ? `${formatTime(last.at)} ${last.message}` : "No log yet";
+      }
+
+      // Read the build marker out of the page's own asset query, so it can never
+      // drift from a hardcoded constant the way a manual version string would.
+      function currentBuildLabel() {
+        const src = document.querySelector('script[src*="push-config"]')?.getAttribute("src") || "";
+        return new URLSearchParams(src.split("?")[1] || "").get("v") || "unversioned";
+      }
+
+      async function renderBuildStatus() {
+        els.buildStatus.textContent = currentBuildLabel();
+        if (!("serviceWorker" in navigator)) return;
+        try {
+          const registration = await navigator.serviceWorker.getRegistration();
+          // A waiting worker means a newer build is downloaded but this session
+          // is still running the old one until the app is fully reopened.
+          if (registration?.waiting) {
+            els.buildStatus.textContent = `${currentBuildLabel()} · update ready, reopen app`;
+          }
+        } catch (error) {
+          // The build label on its own is still useful.
+        }
       }
 
       function renderRecovery() {
