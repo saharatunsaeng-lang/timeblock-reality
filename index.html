@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260725-overnight-blocks" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260725-honour-deletes" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -967,7 +967,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20260725-overnight-blocks"></script>
+    <script src="push-config.js?v=20260725-honour-deletes"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -1596,7 +1596,7 @@
       function applyBootstrapState(result) {
         if (!result) return;
         if (Array.isArray(result.plan)) state.plan = result.plan;
-        if (Array.isArray(result.actual)) state.actual = mergeBlocks(state.actual, result.actual);
+        if (Array.isArray(result.actual)) state.actual = mergeBlocks(state.actual, result.actual, result.range);
         if ("active" in result && !pendingSyncCount && !localActionInFlight) {
           const incomingActive = resolveIncomingActive(result.active);
           // Both being absent is the normal idle case; `?.` made that compare equal
@@ -1659,12 +1659,24 @@
         return null;
       }
 
-      function mergeBlocks(localBlocks, serverBlocks) {
+      // Google is the record for anything that already reached it. A block that was
+      // synced, sits inside the window we just fetched, and is no longer there was
+      // deleted in the calendar - keeping it locally resurrects it on every open.
+      function keptAfterServerSweep(block, serverBlocks, range) {
+        if (!range || !block.googleEventId) return true;
+        if (block.syncStatus && block.syncStatus !== "synced") return true;
+        const start = new Date(block.start).getTime();
+        if (!(start >= new Date(range.start).getTime() && start < new Date(range.end).getTime())) return true;
+        return serverBlocks.some((item) => item.googleEventId === block.googleEventId);
+      }
+
+      function mergeBlocks(localBlocks, serverBlocks, range) {
         const merged = [];
         const keys = new Set();
         const ids = new Set();
-        const pendingLocal = localBlocks.filter((block) => block.syncStatus && block.syncStatus !== "synced");
-        const stableLocal = localBlocks.filter((block) => !block.syncStatus || block.syncStatus === "synced");
+        const surviving = localBlocks.filter((block) => keptAfterServerSweep(block, serverBlocks, range));
+        const pendingLocal = surviving.filter((block) => block.syncStatus && block.syncStatus !== "synced");
+        const stableLocal = surviving.filter((block) => !block.syncStatus || block.syncStatus === "synced");
         [...pendingLocal, ...serverBlocks, ...stableLocal].forEach((block) => {
           if (block.id && ids.has(block.id)) return;
           const key = block.googleEventId ? `gcal:${block.googleEventId}` : `local:${block.id}`;
@@ -2708,7 +2720,15 @@
           .filter(Boolean);
         const activeEvent = events.find((event) => event.extendedProperties?.private?.status === "active");
         const active = activeEvent ? serializeDirectActiveEvent(activeEvent) : null;
-        return { actual, active, calendars: state.calendars, serverTime: new Date().toISOString() };
+        return {
+          actual,
+          active,
+          calendars: state.calendars,
+          serverTime: new Date().toISOString(),
+          // The window we actually read, so the merge can tell "deleted in Google"
+          // apart from "outside what we looked at".
+          range: { start: rangeStart.toISOString(), end: rangeEnd.toISOString() },
+        };
       }
 
       async function getDirectPlanState() {

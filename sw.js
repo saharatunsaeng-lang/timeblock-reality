@@ -1,9 +1,9 @@
-const cacheName = "timeblock-reality-v28-overnight-blocks";
+const cacheName = "timeblock-reality-v29-honour-deletes";
 const assets = [
-  "./?v=20260725-overnight-blocks",
-  "index.html?v=20260725-overnight-blocks",
-  "manifest.webmanifest?v=20260725-overnight-blocks",
-  "push-config.js?v=20260725-overnight-blocks",
+  "./?v=20260725-honour-deletes",
+  "index.html?v=20260725-honour-deletes",
+  "manifest.webmanifest?v=20260725-honour-deletes",
+  "push-config.js?v=20260725-honour-deletes",
   "icon.svg",
 ];
 
@@ -66,7 +66,7 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of clients) {
         if (client.url.startsWith(self.location.origin) && "focus" in client) return client.focus();
       }
-      return self.clients.openWindow("./?v=20260725-overnight-blocks");
+      return self.clients.openWindow("./?v=20260725-honour-deletes");
     }),
   );
 });
