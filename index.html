@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260725-keep-active" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260725-parallel-timeline" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -329,6 +329,112 @@
         color: var(--muted);
         font-size: 0.7rem;
         font-weight: 900;
+      }
+
+      .day-grid {
+        position: relative;
+        display: grid;
+        grid-template-columns: 38px 1fr 1fr;
+        column-gap: 6px;
+      }
+
+      .day-grid-head {
+        display: grid;
+        grid-template-columns: 38px 1fr 1fr;
+        column-gap: 6px;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        padding-bottom: 6px;
+        background: var(--surface);
+      }
+
+      .day-grid-head span {
+        color: var(--muted);
+        font-size: 0.68rem;
+        font-weight: 900;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .day-grid-head span + span {
+        text-align: center;
+      }
+
+      .day-hours {
+        position: relative;
+      }
+
+      .day-hour {
+        position: absolute;
+        left: 0;
+        right: 0;
+        color: var(--muted);
+        font-size: 0.65rem;
+        font-weight: 900;
+      }
+
+      .day-column {
+        position: relative;
+        border-left: 1px solid var(--line);
+      }
+
+      .day-rule {
+        position: absolute;
+        left: 0;
+        right: 0;
+        border-top: 1px solid var(--line);
+        opacity: 0.5;
+      }
+
+      .day-block {
+        position: absolute;
+        left: 2px;
+        right: 2px;
+        overflow: hidden;
+        /* A button centres its content, which floats the label into the middle of a
+           long block instead of marking where the block starts. */
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+        border-left: 3px solid var(--accent);
+        border-radius: 6px;
+        background: var(--accent-soft);
+        padding: 2px 5px;
+        color: var(--ink);
+        text-align: left;
+        font-size: 0.72rem;
+        line-height: 1.15;
+      }
+
+      button.day-block:active {
+        background: #d8eae4;
+      }
+
+      .day-block.plan {
+        border-color: var(--blue);
+        background: var(--blue-soft);
+      }
+
+      .day-block strong {
+        display: block;
+        font-weight: 900;
+        white-space: nowrap;
+      }
+
+      .day-block span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.65rem;
+        white-space: nowrap;
+      }
+
+      .day-now {
+        position: absolute;
+        left: 0;
+        right: 0;
+        z-index: 1;
+        border-top: 2px solid var(--danger);
       }
 
       .time-block {
@@ -867,7 +973,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20260725-keep-active"></script>
+    <script src="push-config.js?v=20260725-parallel-timeline"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -892,6 +998,13 @@
       // A night of sleep is captured as one block and routinely runs 9-10 hours, so
       // this only catches a block left running well beyond any plausible session.
       const staleActiveMs = 20 * 60 * 60 * 1000;
+      // Plan and actual sit in their own columns on a shared time axis, so a plan
+      // block lines up with whatever actually happened during it.
+      const dayGridPxPerMinute = 1.9;
+      // A code fits in ~18px; times need a second line. Below that a block stays a
+      // bare bar rather than showing clipped text.
+      const dayGridLabelMinHeight = 18;
+      const dayGridDetailMinHeight = 46;
       const pushServiceUrl = String(window.TIMEBLOCK_PUSH_CONFIG?.endpoint || "").replace(/\/$/, "");
       const pushInstallationKey = `${storageKey}-push-installation`;
       const state = loadState();
@@ -1898,29 +2011,93 @@
           els.todayList.append(empty);
           return;
         }
-        items.forEach((block) => {
-          const row = document.createElement("article");
-          row.className = "timeline-row";
-          const type = block.source === "gcal-plan" ? "Plan" : "Actual";
-          const blockClass = type === "Plan" ? "time-block plan" : "time-block";
-          const content = `<span class="block-heading"><strong class="block-title">${type}: ${categoryShortLabel(block.categoryId)}</strong>${type === "Actual" ? '<span class="edit-hint">Edit</span>' : ""}</span><span class="block-time">${formatTime(block.start)}-${formatTime(block.end)} · ${minutesBetween(block.start, block.end)}m</span>`;
-          row.innerHTML = `<time>${formatTime(block.start)}</time>`;
-          if (type === "Actual") {
-            const editButton = document.createElement("button");
-            editButton.className = blockClass;
-            editButton.type = "button";
-            editButton.setAttribute("aria-label", `Edit ${categoryShortLabel(block.categoryId)} ${formatTime(block.start)} to ${formatTime(block.end)}`);
-            editButton.innerHTML = content;
-            editButton.addEventListener("click", () => openFixSheet(block.id));
-            row.append(editButton);
-          } else {
-            const plan = document.createElement("div");
-            plan.className = blockClass;
-            plan.innerHTML = content;
-            row.append(plan);
-          }
-          els.todayList.append(row);
-        });
+        renderDayGrid(planBlocks, actualBlocks);
+      }
+
+      function renderDayGrid(planBlocks, actualBlocks) {
+        const all = [...planBlocks, ...actualBlocks];
+        const startOfDay = new Date(all.reduce((min, block) => Math.min(min, new Date(block.start).getTime()), Infinity));
+        startOfDay.setMinutes(0, 0, 0);
+        const lastEnd = all.reduce((max, block) => Math.max(max, new Date(block.end).getTime()), -Infinity);
+        const endOfDay = new Date(lastEnd);
+        if (endOfDay.getMinutes() || endOfDay.getSeconds()) endOfDay.setHours(endOfDay.getHours() + 1, 0, 0, 0);
+        const totalMinutes = Math.max(60, Math.round((endOfDay - startOfDay) / 60000));
+        const height = Math.round(totalMinutes * dayGridPxPerMinute);
+        const offsetOf = (value) => Math.round(((new Date(value) - startOfDay) / 60000) * dayGridPxPerMinute);
+
+        const head = document.createElement("div");
+        head.className = "day-grid-head";
+        head.innerHTML = "<span></span><span>Plan</span><span>Actual</span>";
+        els.todayList.append(head);
+
+        const grid = document.createElement("div");
+        grid.className = "day-grid";
+        grid.style.height = `${height}px`;
+
+        const hours = document.createElement("div");
+        hours.className = "day-hours";
+        const planColumn = document.createElement("div");
+        planColumn.className = "day-column";
+        const actualColumn = document.createElement("div");
+        actualColumn.className = "day-column";
+
+        for (let minute = 0; minute <= totalMinutes; minute += 60) {
+          const top = Math.round(minute * dayGridPxPerMinute);
+          const label = document.createElement("div");
+          label.className = "day-hour";
+          label.style.top = `${top}px`;
+          label.textContent = formatTime(addMinutes(startOfDay, minute));
+          hours.append(label);
+          [planColumn, actualColumn].forEach((column) => {
+            const rule = document.createElement("div");
+            rule.className = "day-rule";
+            rule.style.top = `${top}px`;
+            column.append(rule);
+          });
+        }
+
+        planBlocks.forEach((block) => planColumn.append(buildDayBlock(block, "plan", offsetOf)));
+        actualBlocks.forEach((block) => actualColumn.append(buildDayBlock(block, "actual", offsetOf)));
+
+        const now = new Date();
+        if (now >= startOfDay && now <= endOfDay) {
+          const marker = document.createElement("div");
+          marker.className = "day-now";
+          marker.style.top = `${offsetOf(now)}px`;
+          grid.append(marker);
+        }
+
+        grid.append(hours, planColumn, actualColumn);
+        els.todayList.append(grid);
+      }
+
+      function buildDayBlock(block, kind, offsetOf) {
+        const top = offsetOf(block.start);
+        const minutes = minutesBetween(block.start, block.end);
+        // Keep very short blocks tappable and legible rather than hairline-thin.
+        const blockHeight = Math.max(16, Math.round(minutes * dayGridPxPerMinute));
+        const isActual = kind === "actual";
+        const node = document.createElement(isActual ? "button" : "div");
+        node.className = `day-block${isActual ? "" : " plan"}`;
+        node.style.top = `${top}px`;
+        node.style.height = `${blockHeight}px`;
+
+        const code = categoryShortLabel(block.categoryId);
+        const range = `${formatTime(block.start)}-${formatTime(block.end)} · ${minutes}m`;
+        if (blockHeight >= dayGridDetailMinHeight) {
+          node.innerHTML = `<strong>${escapeHtml(code)}</strong><span>${escapeHtml(range)}</span>`;
+        } else if (blockHeight >= dayGridLabelMinHeight) {
+          node.innerHTML = `<strong>${escapeHtml(code)}</strong>`;
+        }
+
+        if (isActual) {
+          node.type = "button";
+          node.setAttribute("aria-label", `Edit ${code} ${range}`);
+          node.addEventListener("click", () => openFixSheet(block.id));
+        } else {
+          node.setAttribute("title", `${code} ${range}`);
+        }
+        return node;
       }
 
       function renderDailySummary(planBlocks, actualBlocks) {
