@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260722-production-push" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260725-edit-time-fix-2" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -685,7 +685,7 @@
 
         <section class="last-card" id="lastBlockCard" aria-label="Last actual block">
           <div>
-            <span class="label">Last</span>
+            <span class="label" id="lastBlockLabel">Last</span>
             <strong id="lastBlockTitle">No actual yet</strong>
             <span class="status-chip warn" id="lastSyncStatus">Not synced</span>
           </div>
@@ -861,7 +861,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20260722-production-push"></script>
+    <script src="push-config.js?v=20260725-edit-time-fix-2"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -879,6 +879,8 @@
       const googleClientId = "809951458535-dg6gjp5nk4fjrgs1kngrger4cni90er9.apps.googleusercontent.com";
       const googleScopes = "https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events";
       const thirtyMinuteSignalMs = 30 * 60 * 1000;
+      // After this many failed passes a block stops holding up the rest of the queue.
+      const maxSyncAttempts = 3;
       const pushServiceUrl = String(window.TIMEBLOCK_PUSH_CONFIG?.endpoint || "").replace(/\/$/, "");
       const pushInstallationKey = `${storageKey}-push-installation`;
       const state = loadState();
@@ -898,6 +900,9 @@
       let activeSignalTimer = 0;
       let backgroundPushReady = false;
       let backgroundPushError = "";
+      // init() runs before the rest of this script is evaluated, so anything it
+      // touches has to be declared up here or it dies in the temporal dead zone.
+      let silentReconnectInFlight = false;
 
       const els = {
         viewEyebrow: document.querySelector("#viewEyebrow"),
@@ -918,6 +923,7 @@
         fixLastButton: document.querySelector("#fixLastButton"),
         syncLastButton: document.querySelector("#syncLastButton"),
         lastBlockCard: document.querySelector("#lastBlockCard"),
+        lastBlockLabel: document.querySelector("#lastBlockLabel"),
         lastBlockTitle: document.querySelector("#lastBlockTitle"),
         lastSyncStatus: document.querySelector("#lastSyncStatus"),
         manualCategory: document.querySelector("#manualCategory"),
@@ -1192,9 +1198,8 @@
           .finally(() => {
             pendingSyncCount = Math.max(0, pendingSyncCount - 1);
             if (!pendingSyncCount) {
-              els.serverStatus.textContent = "Ready";
-              els.serverChip.textContent = "Ready";
-              els.serverChip.className = "status-chip";
+              els.serverStatus.textContent = state.syncQueue.length ? `${state.syncQueue.length} waiting to sync` : "Ready";
+              applyIdleSyncChip();
             }
             render();
           });
@@ -1222,33 +1227,6 @@
           updateSyncStatus(message, true);
           return false;
         }
-      }
-
-      async function updateActualBlock(block) {
-        if (operationInFlight) return;
-        operationInFlight = true;
-        render();
-        updateSyncStatus("Fixing in GCal...");
-        markBlockSync(block, "syncing");
-        try {
-          const result = await runServer("updateActualBlock", block);
-          Object.assign(block, result.block);
-          markBlockSync(block, "synced");
-          if ("active" in result) state.active = result.active;
-          if (result.calendars) applyCalendarStatus(result.calendars);
-          saveState();
-          logAction(`fixed ${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)}`);
-          updateSyncStatus("Fixed in GCal");
-        } catch (error) {
-          const message = readableError(error);
-          markBlockSync(block, "error", message);
-          addPersistentSyncTask(block);
-          showRecovery(message, "Fix sync failed");
-          updateSyncStatus(message, true);
-        } finally {
-          operationInFlight = false;
-        }
-        render();
       }
 
       async function retrySyncLastBlock() {
@@ -1284,6 +1262,7 @@
         render();
 
         try {
+          const attemptedBlockIds = new Set();
           while (state.syncQueue.length) {
             const task = state.syncQueue[0];
             const block = state.actual.find((item) => item.id === task.blockId);
@@ -1292,12 +1271,29 @@
               saveState();
               continue;
             }
+            // Every remaining task has already been tried in this pass.
+            if (attemptedBlockIds.has(task.blockId)) break;
+            attemptedBlockIds.add(task.blockId);
 
             const ok = await syncActualBlock(block);
-            if (!ok) break;
-            state.syncQueue.shift();
+            // syncActualBlock can rebuild state.syncQueue, so re-locate the task.
+            const index = state.syncQueue.findIndex((item) => item.blockId === task.blockId);
+            if (ok) {
+              if (index >= 0) state.syncQueue.splice(index, 1);
+              saveState();
+              pendingSyncCount = state.syncQueue.length;
+              render();
+              continue;
+            }
+
+            task.attempts = (Number(task.attempts) || 0) + 1;
             saveState();
-            pendingSyncCount = state.syncQueue.length;
+            // Most failures are transient (offline, expired token): keep the order and retry later.
+            if (task.attempts < maxSyncAttempts || index < 0) break;
+            // This block keeps failing on its own, so move it behind newer captures
+            // instead of letting it block every later block from ever syncing.
+            state.syncQueue.push(...state.syncQueue.splice(index, 1));
+            saveState();
             render();
           }
         } finally {
@@ -1309,8 +1305,7 @@
             state.lastError = "";
             saveState();
             els.serverStatus.textContent = "Ready";
-            els.serverChip.textContent = "Ready";
-            els.serverChip.className = "status-chip";
+            applyIdleSyncChip();
           }
           render();
         }
@@ -1381,7 +1376,7 @@
       }
 
       function populateFixLastForm(block) {
-        els.fixSheetTitle.textContent = `${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)}`;
+        els.fixSheetTitle.textContent = `${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)}${blockDaySuffix(block.start)}`;
         els.manualCategory.value = block.categoryId;
         els.manualStart.value = toTimeInput(new Date(block.start));
         els.manualEnd.value = toTimeInput(new Date(block.end));
@@ -1392,7 +1387,7 @@
         event.preventDefault();
         const block = state.actual.find((item) => item.id === fixTargetBlockId);
         if (!block) return;
-        const fixed = buildBlockFromForm(els.manualCategory.value, els.manualStart.value, els.manualEnd.value, els.manualNote.value);
+        const fixed = buildBlockFromForm(els.manualCategory.value, els.manualStart.value, els.manualEnd.value, els.manualNote.value, dateKey(block.start));
         block.categoryId = fixed.categoryId;
         block.note = fixed.note;
         block.start = fixed.start;
@@ -1421,8 +1416,7 @@
           saveState();
           render();
           els.serverStatus.textContent = `Synced ${state.plan.length} plan`;
-          els.serverChip.textContent = "Ready";
-          els.serverChip.className = "status-chip";
+          applyIdleSyncChip();
         } catch (error) {
           els.serverStatus.textContent = readableError(error);
           els.serverChip.textContent = "Issue";
@@ -1453,8 +1447,7 @@
           applyBootstrapState(result);
           bootstrapReady = true;
           els.serverStatus.textContent = "Ready";
-          els.serverChip.textContent = "Ready";
-          els.serverChip.className = "status-chip";
+          applyIdleSyncChip();
         } catch (error) {
           bootstrapReady = hasUsableLocalState(state);
           els.serverStatus.textContent = readableError(error);
@@ -1552,11 +1545,12 @@
         return merged.sort((a, b) => new Date(a.start) - new Date(b.start));
       }
 
-      function buildBlockFromForm(categoryId, startTime, endTime, note) {
-        const day = todayDateKey();
-        const start = fromDateAndTime(day, startTime);
-        let end = fromDateAndTime(day, endTime);
-        if (end <= start) end = addMinutes(start, 30);
+      function buildBlockFromForm(categoryId, startTime, endTime, note, baseDay = todayDateKey()) {
+        // Editing keeps the block on its own day; only capture defaults to today.
+        const start = fromDateAndTime(baseDay, startTime);
+        let end = fromDateAndTime(baseDay, endTime);
+        // An end at or before the start means the block ran past midnight.
+        if (end <= start) end = addDays(end, 1);
         return {
           id: crypto.randomUUID(),
           categoryId,
@@ -1819,6 +1813,7 @@
         els.lastBlockCard.classList.remove("has-error");
         els.lastBlockCard.classList.remove("is-syncing");
         if (!block) {
+          els.lastBlockLabel.textContent = "Last";
           els.lastBlockTitle.textContent = "No actual yet";
           els.lastSyncStatus.textContent = "Not synced";
           els.lastSyncStatus.className = "status-chip warn";
@@ -1828,6 +1823,7 @@
           closeFixSheet();
           return;
         }
+        els.lastBlockLabel.textContent = `Last${blockDaySuffix(block.start)}`;
         els.lastBlockTitle.textContent = `${categoryShortLabel(block.categoryId)} ${formatTime(block.start)}-${formatTime(block.end)} · ${minutesBetween(block.start, block.end)}m`;
         const syncState = getBlockSyncState(block);
         const needsReconnect = !syncState.isSynced && !syncState.isSyncing && !googleAccessToken;
@@ -2235,12 +2231,33 @@
         return { label: "Saved locally", className: "warn", isSynced: false, isSyncing: false, isError: false };
       }
 
+      // "Ready" must mean nothing is waiting. Pending work or a missing Google session
+      // stays visible on the chip instead of being reported as done.
+      function applyIdleSyncChip() {
+        if (pendingSyncCount) {
+          els.serverChip.textContent = "Syncing";
+          els.serverChip.className = "status-chip warn";
+          return;
+        }
+        if (state.syncQueue.length) {
+          els.serverChip.textContent = googleAccessToken ? "Pending" : "Offline";
+          els.serverChip.className = "status-chip warn";
+          return;
+        }
+        els.serverChip.textContent = "Ready";
+        els.serverChip.className = "status-chip";
+      }
+
       function updateSyncStatus(status, isError = false) {
         els.lastSyncStatus.textContent = status;
         els.lastSyncStatus.className = `status-chip ${isError ? "bad" : "warn"}`;
         els.serverStatus.textContent = status;
-        els.serverChip.textContent = isError ? "Issue" : (pendingSyncCount ? "Syncing" : "Ready");
-        els.serverChip.className = `status-chip ${isError ? "bad" : (pendingSyncCount ? "warn" : "")}`;
+        if (isError) {
+          els.serverChip.textContent = "Issue";
+          els.serverChip.className = "status-chip bad";
+        } else {
+          applyIdleSyncChip();
+        }
         if (isError && !/GCal|Google Calendar|Connect Google/.test(status)) {
           state.lastError = status;
           saveState();
@@ -2361,8 +2378,6 @@
           }, 100);
         });
       }
-
-      let silentReconnectInFlight = false;
 
       async function silentReconnectGoogle() {
         if (!state.google.connected || googleAccessToken || silentReconnectInFlight) return;
@@ -2490,9 +2505,7 @@
           const existing = await findDirectEventByBlockId(block.id);
           if (existing) googleEventId = existing.id;
         }
-        const result = googleEventId
-          ? await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events/${encodeURIComponent(googleEventId)}`, { method: "PATCH", body: JSON.stringify(actualEventPayload(block)) })
-          : await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events`, { method: "POST", body: JSON.stringify(actualEventPayload(block)) });
+        const result = await writeActualEvent(googleEventId, actualEventPayload(block));
         return { block: serializeDirectActualEvent(result, block), calendars: state.calendars, active: state.active };
       }
 
@@ -2504,10 +2517,6 @@
         });
         const data = await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events?${params}`);
         return (data.items || [])[0] || null;
-      }
-
-      async function updateDirectActualBlock(block) {
-        return createDirectActualBlock(block);
       }
 
       async function deleteDirectEvent(googleEventId) {
@@ -2526,9 +2535,7 @@
           end: { dateTime: end.toISOString(), timeZone: "Asia/Bangkok" },
           extendedProperties: { private: { ld8: block.categoryId, source: "timeblock-reality", status: "active", blockId: block.id } },
         };
-        const result = block.googleEventId
-          ? await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events/${encodeURIComponent(block.googleEventId)}`, { method: "PATCH", body: JSON.stringify(payload) })
-          : await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events`, { method: "POST", body: JSON.stringify(payload) });
+        const result = await writeActualEvent(block.googleEventId, payload);
         return { active: serializeDirectActiveEvent(result, block), calendars: state.calendars };
       }
 
@@ -2613,9 +2620,28 @@
           silentReconnectGoogle();
           throw new Error("Google session expired, reconnecting...");
         }
-        if (!response.ok) throw new Error(`Google Calendar API failed: ${response.status}`);
+        if (!response.ok) {
+          const error = new Error(`Google Calendar API failed: ${response.status}`);
+          error.status = response.status;
+          throw error;
+        }
         if (response.status === 204) return {};
         return response.json();
+      }
+
+      // A block keeps its googleEventId forever, but the event can be deleted in Google
+      // Calendar. Recreate it instead of failing that block's sync on every retry.
+      async function writeActualEvent(googleEventId, payload) {
+        const calendarPath = `/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events`;
+        const body = JSON.stringify(payload);
+        if (googleEventId) {
+          try {
+            return await gcalFetch(`${calendarPath}/${encodeURIComponent(googleEventId)}`, { method: "PATCH", body });
+          } catch (error) {
+            if (error.status !== 404 && error.status !== 410) throw error;
+          }
+        }
+        return gcalFetch(calendarPath, { method: "POST", body });
       }
 
       function inferCategoryId(text) {
@@ -2647,7 +2673,6 @@
           case "getBootstrapState": return getDirectBootstrapState();
           case "syncPlanWeek": return getDirectPlanState();
           case "createActualBlock": return createDirectActualBlock(args[0]);
-          case "updateActualBlock": return updateDirectActualBlock(args[0]);
           case "startActiveBlock": return startDirectActiveBlock(args[0]);
           default: return Promise.reject(new Error(`Unsupported client action: ${functionName}`));
         }
@@ -2706,7 +2731,11 @@
       }
 
       function getLastActualBlock() {
-        return state.actual[state.actual.length - 1];
+        // Blocks are appended out of order by the bootstrap merge and by the stale
+        // auto-close, so pick the newest by start time instead of by array position.
+        return state.actual.reduce((latest, block) => (
+          !latest || new Date(block.start) >= new Date(latest.start) ? block : latest
+        ), null);
       }
 
       function todayDateKey() {
@@ -2724,6 +2753,12 @@
 
       function toTimeInput(date) {
         return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+      }
+
+      // Editing only exposes times, so an older block must announce its own date.
+      function blockDaySuffix(value) {
+        if (dateKey(value) === todayDateKey()) return "";
+        return ` · ${new Date(value).toLocaleDateString("en-US", { day: "numeric", month: "short" })}`;
       }
 
       function formatTime(value) {

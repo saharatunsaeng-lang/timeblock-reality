@@ -1,9 +1,9 @@
-const cacheName = "timeblock-reality-v21-production-push";
+const cacheName = "timeblock-reality-v23-edit-time-fix";
 const assets = [
-  "./?v=20260722-production-push",
-  "index.html?v=20260722-production-push",
-  "manifest.webmanifest?v=20260722-production-push",
-  "push-config.js?v=20260722-production-push",
+  "./?v=20260725-edit-time-fix-2",
+  "index.html?v=20260725-edit-time-fix-2",
+  "manifest.webmanifest?v=20260725-edit-time-fix-2",
+  "push-config.js?v=20260725-edit-time-fix-2",
   "icon.svg",
 ];
 
@@ -66,7 +66,7 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of clients) {
         if (client.url.startsWith(self.location.origin) && "focus" in client) return client.focus();
       }
-      return self.clients.openWindow("./?v=20260722-production-push");
+      return self.clients.openWindow("./?v=20260725-edit-time-fix-2");
     }),
   );
 });
