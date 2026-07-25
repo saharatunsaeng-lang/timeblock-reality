@@ -30,6 +30,14 @@ function doGet(event) {
       .setTitle(execute ? "LD8 Duplicate Complete" : "LD8 Duplicate Preview");
   }
 
+  if (event?.parameter?.mode === "restore-blocks") {
+    const execute = event.parameter.execute === "1";
+    const payload = JSON.stringify(restoreLostBlocks_(execute), null, 2);
+    return HtmlService
+      .createHtmlOutput(`<pre>${escapeHtml_(payload)}</pre>`)
+      .setTitle(execute ? "Restore Complete" : "Restore Preview");
+  }
+
   if (event?.parameter?.mode === "audit") {
     const payload = JSON.stringify(inspectActualRange_(event.parameter), null, 2);
     return HtmlService
@@ -310,6 +318,99 @@ function finalizeActualEvent_(event, normalized) {
     calendars: getCalendarStatus(),
     active: getActiveBlock(),
   };
+}
+
+// One-off recovery for capture that was destroyed by the bugs fixed on 2026-07-25:
+// two blocks that never reached the calendar, and the orphaned Active placeholder
+// they left behind. Confirmed with Saharat before running. Preview by default.
+const LOST_BLOCK_RESTORES = [
+  { categoryId: "bd", start: "2026-07-24T16:57:00+07:00", end: "2026-07-24T17:40:00+07:00", note: "Restored 2026-07-25 after capture bug" },
+  { categoryId: "bd", start: "2026-07-24T20:26:00+07:00", end: "2026-07-25T06:06:00+07:00", note: "Restored 2026-07-25 after capture bug (sleep)" },
+];
+
+// The placeholder carries seconds, so it is matched by a window rather than an
+// exact timestamp.
+const ORPHANED_ACTIVE_FROM = "2026-07-25T09:00:00+07:00";
+const ORPHANED_ACTIVE_TO = "2026-07-25T09:30:00+07:00";
+
+function restoreLostBlocks_(execute) {
+  const calendar = requireActualCalendar_();
+  const creates = [];
+  const retitles = [];
+  const skipped = [];
+
+  LOST_BLOCK_RESTORES.forEach((entry) => {
+    const start = new Date(entry.start);
+    const end = new Date(entry.end);
+    // The app writes the short code, so match it instead of the long label.
+    const title = `Actual: ${shortCategoryCode_(entry.categoryId)}`;
+    const minutes = Math.round((end.getTime() - start.getTime()) / 60000);
+    // Re-opening this URL must never duplicate a restore.
+    const existing = calendar.getEvents(start, end).filter((event) => {
+      return event.getStartTime().getTime() === start.getTime()
+        && event.getEndTime().getTime() === end.getTime()
+        && event.getTitle().indexOf("Actual:") === 0;
+    })[0];
+
+    if (!existing) {
+      creates.push({ title, start: entry.start, end: entry.end, minutes, entry });
+    } else if (existing.getTitle() !== title) {
+      retitles.push({ from: existing.getTitle(), to: title, start: entry.start, event: existing, entry });
+    } else {
+      skipped.push({ title, start: entry.start, end: entry.end, reason: "already present" });
+    }
+  });
+
+  const orphans = calendar
+    .getEvents(new Date(ORPHANED_ACTIVE_FROM), new Date(ORPHANED_ACTIVE_TO))
+    .filter((event) => event.getTitle().indexOf("Active:") === 0);
+
+  const result = {
+    calendar: calendar.getName(),
+    mode: execute ? "execute" : "preview",
+    willCreate: creates.map((item) => ({ title: item.title, start: item.start, end: item.end, minutes: item.minutes })),
+    willRetitle: retitles.map((item) => ({ from: item.from, to: item.to, start: item.start })),
+    willDelete: orphans.map((event) => ({
+      title: event.getTitle(),
+      start: event.getStartTime().toISOString(),
+      end: event.getEndTime().toISOString(),
+    })),
+    skipped,
+    created: [],
+    retitled: [],
+    deleted: [],
+  };
+
+  if (!execute) {
+    result.hint = "Add &execute=1 to the URL to apply this.";
+    return result;
+  }
+
+  creates.forEach((item) => {
+    const created = calendar.createEvent(item.title, new Date(item.entry.start), new Date(item.entry.end), {
+      description: item.entry.note,
+    });
+    tagActualEvent_(created, item.entry.categoryId, ACTUAL_STATUS, Utilities.getUuid());
+    result.created.push({ title: item.title, start: item.start, end: item.end, minutes: item.minutes });
+  });
+
+  retitles.forEach((item) => {
+    item.event.setTitle(item.to);
+    tagActualEvent_(item.event, item.entry.categoryId, ACTUAL_STATUS, item.event.getTag(BLOCK_ID_TAG) || Utilities.getUuid());
+    result.retitled.push({ from: item.from, to: item.to, start: item.start });
+  });
+
+  orphans.forEach((event) => {
+    result.deleted.push({ title: event.getTitle(), start: event.getStartTime().toISOString() });
+    event.deleteEvent();
+  });
+
+  return result;
+}
+
+function shortCategoryCode_(id) {
+  const category = LD8_CATEGORIES.find((item) => item.id === id);
+  return category ? category.code : id;
 }
 
 function getFirstCalendarByName_(name) {
