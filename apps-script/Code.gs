@@ -333,6 +333,12 @@ const LOST_BLOCK_RESTORES = [
 const ORPHANED_ACTIVE_FROM = "2026-07-25T09:00:00+07:00";
 const ORPHANED_ACTIVE_TO = "2026-07-25T09:30:00+07:00";
 
+// Left behind by the edit bug fixed on 2026-07-25: editing an older block rewrote
+// it onto today at the same clock time, which landed it in the future.
+const PHANTOM_BLOCK_DELETES = [
+  { title: "Actual: 1 BD", from: "2026-07-25T21:00:00+07:00", to: "2026-07-25T21:05:00+07:00" },
+];
+
 function restoreLostBlocks_(execute) {
   const calendar = requireActualCalendar_();
   const creates = [];
@@ -364,6 +370,13 @@ function restoreLostBlocks_(execute) {
   const orphans = calendar
     .getEvents(new Date(ORPHANED_ACTIVE_FROM), new Date(ORPHANED_ACTIVE_TO))
     .filter((event) => event.getTitle().indexOf("Active:") === 0);
+
+  PHANTOM_BLOCK_DELETES.forEach((entry) => {
+    calendar
+      .getEvents(new Date(entry.from), new Date(entry.to))
+      .filter((event) => event.getTitle() === entry.title && event.getStartTime() >= new Date(entry.from))
+      .forEach((event) => orphans.push(event));
+  });
 
   const result = {
     calendar: calendar.getName(),
