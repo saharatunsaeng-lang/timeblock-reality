@@ -126,7 +126,7 @@ export class TimeBlockSignal {
     if (!subscriptions.length) return;
     await this.sendPush({
       title: `${categoryCodes[active.categoryId] || active.categoryId} · ${reminderCount * 30} minutes`,
-      body: `Check-in ${reminderCount}: continue, switch, or end this block.`,
+      body: `Check-in ${reminderCount}: still on this, or switch to another domain?`,
       tag: `timeblock-${active.id}-${reminderCount}`,
       badge: reminderCount,
       data: { activeId: active.id, reminderCount },

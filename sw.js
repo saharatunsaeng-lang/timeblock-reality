@@ -1,9 +1,9 @@
-const cacheName = "timeblock-reality-v26-parallel-timeline";
+const cacheName = "timeblock-reality-v27-switch-only";
 const assets = [
-  "./?v=20260725-parallel-timeline",
-  "index.html?v=20260725-parallel-timeline",
-  "manifest.webmanifest?v=20260725-parallel-timeline",
-  "push-config.js?v=20260725-parallel-timeline",
+  "./?v=20260725-switch-only",
+  "index.html?v=20260725-switch-only",
+  "manifest.webmanifest?v=20260725-switch-only",
+  "push-config.js?v=20260725-switch-only",
   "icon.svg",
 ];
 
@@ -66,7 +66,7 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of clients) {
         if (client.url.startsWith(self.location.origin) && "focus" in client) return client.focus();
       }
-      return self.clients.openWindow("./?v=20260725-parallel-timeline");
+      return self.clients.openWindow("./?v=20260725-switch-only");
     }),
   );
 });

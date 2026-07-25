@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260725-parallel-timeline" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260725-switch-only" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -117,7 +117,6 @@
       }
 
       .round-button,
-      .end-button,
       .secondary-button,
       .danger-button,
       .nav-button,
@@ -135,14 +134,6 @@
         width: 38px;
         height: 38px;
         border-radius: 999px;
-      }
-
-      .end-button {
-        min-width: 68px;
-        min-height: 42px;
-        border: 0;
-        background: var(--ink);
-        color: #fff;
       }
 
       .primary-button {
@@ -784,7 +775,6 @@
             <span class="block-time" id="activeMeta"></span>
             <span class="status-chip warn checkin-signal" id="activeSignal" hidden>30m check-in</span>
           </div>
-          <button id="endBlockButton" class="end-button" disabled>End</button>
         </section>
 
         <div class="domain-grid" id="quickGrid"></div>
@@ -973,7 +963,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20260725-parallel-timeline"></script>
+    <script src="push-config.js?v=20260725-switch-only"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -1037,7 +1027,6 @@
         activeElapsed: document.querySelector("#activeElapsed"),
         activeMeta: document.querySelector("#activeMeta"),
         activeSignal: document.querySelector("#activeSignal"),
-        endBlockButton: document.querySelector("#endBlockButton"),
         quickGrid: document.querySelector("#quickGrid"),
         fixSheet: document.querySelector("#fixSheet"),
         fixSheetScrim: document.querySelector("#fixSheetScrim"),
@@ -1128,7 +1117,6 @@
         document.querySelectorAll(".nav-button").forEach((tab) => {
           tab.addEventListener("click", () => activateTab(tab.dataset.tab));
         });
-        els.endBlockButton.addEventListener("click", () => endActiveBlock());
         els.fixLastButton.addEventListener("click", () => openFixSheet());
         els.syncLastButton.addEventListener("click", retrySyncLastBlock);
         els.closeFixSheetButton.addEventListener("click", closeFixSheet);
@@ -1222,23 +1210,6 @@
           queueActiveSync(state.active);
         } catch (error) {
           updateSyncStatus(readableError(error), true);
-        } finally {
-          localActionInFlight = false;
-          render();
-        }
-      }
-
-      function endActiveBlock(shouldRender = true) {
-        if (isCaptureLocked()) return;
-        localActionInFlight = true;
-        try {
-          logAction("end active");
-          const block = finishActiveBlockLocally();
-          syncBackgroundPushState({ keepalive: true });
-          scheduleActiveSignal();
-          if (!block) return;
-          queueActualSync(block);
-          if (shouldRender) render();
         } finally {
           localActionInFlight = false;
           render();
@@ -1739,8 +1710,7 @@
           els.runningLabel.hidden = true;
           els.activeElapsed.hidden = true;
           els.activeElapsed.textContent = "";
-          els.activeMeta.textContent = bootstrapReady ? "" : "Loading current state...";
-          els.endBlockButton.disabled = true;
+          els.activeMeta.textContent = bootstrapReady ? "Tap a domain to start" : "Loading current state...";
         } else {
           els.activeTitle.textContent = categoryShortLabel(state.active.categoryId);
           els.runningLabel.hidden = false;
@@ -1748,7 +1718,6 @@
           els.activeElapsed.textContent = formatElapsed(state.active.start, new Date());
           const syncText = pendingSyncCount ? " · syncing" : "";
           els.activeMeta.textContent = `Started ${formatTime(state.active.start)}${syncText}`;
-          els.endBlockButton.disabled = locked;
         }
         [...els.quickGrid.querySelectorAll("button")].forEach((button) => {
           const category = categories.find((item) => button.title === item.name);
@@ -1811,7 +1780,7 @@
         if (!("Notification" in window) || Notification.permission !== "granted") return;
         const title = `${categoryShortLabel(active.categoryId)} · ${reminderCount * 30} minutes`;
         const options = {
-          body: `Check-in ${reminderCount}: continue, switch, or end this block.`,
+          body: `Check-in ${reminderCount}: still on this, or switch to another domain?`,
           tag: `timeblock-30m-${active.id}-${reminderCount}`,
           renotify: true,
         };
