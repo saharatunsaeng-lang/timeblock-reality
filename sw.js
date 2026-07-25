@@ -1,9 +1,9 @@
-const cacheName = "timeblock-reality-v24-build-badge";
+const cacheName = "timeblock-reality-v25-keep-active";
 const assets = [
-  "./?v=20260725-build-badge",
-  "index.html?v=20260725-build-badge",
-  "manifest.webmanifest?v=20260725-build-badge",
-  "push-config.js?v=20260725-build-badge",
+  "./?v=20260725-keep-active",
+  "index.html?v=20260725-keep-active",
+  "manifest.webmanifest?v=20260725-keep-active",
+  "push-config.js?v=20260725-keep-active",
   "icon.svg",
 ];
 
@@ -66,7 +66,7 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of clients) {
         if (client.url.startsWith(self.location.origin) && "focus" in client) return client.focus();
       }
-      return self.clients.openWindow("./?v=20260725-build-badge");
+      return self.clients.openWindow("./?v=20260725-keep-active");
     }),
   );
 });

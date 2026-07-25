@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260725-build-badge" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260725-keep-active" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -867,7 +867,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20260725-build-badge"></script>
+    <script src="push-config.js?v=20260725-keep-active"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -887,6 +887,11 @@
       const thirtyMinuteSignalMs = 30 * 60 * 1000;
       // After this many failed passes a block stops holding up the rest of the queue.
       const maxSyncAttempts = 3;
+      // How far back bootstrap reads history, and how much of it is kept locally.
+      const actualHistoryDays = 14;
+      // A night of sleep is captured as one block and routinely runs 9-10 hours, so
+      // this only catches a block left running well beyond any plausible session.
+      const staleActiveMs = 20 * 60 * 60 * 1000;
       const pushServiceUrl = String(window.TIMEBLOCK_PUSH_CONFIG?.endpoint || "").replace(/\/$/, "");
       const pushInstallationKey = `${storageKey}-push-installation`;
       const state = loadState();
@@ -996,6 +1001,7 @@
         syncHomeScreenBadge();
         silentReconnectGoogle();
         drainPersistentSyncQueue();
+        ensureActiveBlockSynced();
         refreshStatus();
         setInterval(tickActiveTimer, 1000);
         if ("serviceWorker" in navigator) {
@@ -1180,20 +1186,36 @@
       }
 
       function queueActiveSync(activeBlock) {
-        if (!googleAccessToken) {
+        if (!googleAccessToken || !activeBlock) {
           render();
           return;
         }
         enqueueSync("Starting in GCal...", async () => {
           try {
             const result = await runServer("startActiveBlock", activeBlock);
-            if (result.active && state.active?.id === result.active.id) state.active = result.active;
+            if (result.active && state.active?.id === result.active.id) {
+              // The check-in counters only exist on this device; the Google copy
+              // does not carry them, so merge rather than replace.
+              state.active = {
+                ...result.active,
+                reminderCount: getReminderCount(state.active),
+                reminderSentAt: state.active.reminderSentAt || "",
+              };
+            }
             if (result.calendars) applyCalendarStatus(result.calendars);
             saveState();
           } catch (error) {
             updateSyncStatus(readableError(error), true);
           }
         });
+      }
+
+      // The running block lives only in state.active - it has no entry in the
+      // persistent queue - so a failed placeholder write has to be retried here or
+      // Google never learns the block exists.
+      function ensureActiveBlockSynced() {
+        if (!googleAccessToken || !state.active || state.active.googleEventId) return;
+        queueActiveSync(state.active);
       }
 
       function enqueueSync(status, task) {
@@ -1479,10 +1501,9 @@
         scheduleActiveSignal();
         silentReconnectGoogle();
         drainPersistentSyncQueue();
+        ensureActiveBlockSynced();
         refreshStatus();
       }
-
-      const staleActiveMs = 6 * 60 * 60 * 1000;
 
       function applyBootstrapState(result) {
         if (!result) return;
@@ -1490,11 +1511,20 @@
         if (Array.isArray(result.actual)) state.actual = mergeBlocks(state.actual, result.actual);
         if ("active" in result && !pendingSyncCount && !localActionInFlight) {
           const incomingActive = resolveIncomingActive(result.active);
-          if (incomingActive?.id === state.active?.id && state.active.reminderSentAt) {
+          // Both being absent is the normal idle case; `?.` made that compare equal
+          // and then dereferenced null, throwing out of bootstrap before it saved.
+          if (incomingActive && state.active && incomingActive.id === state.active.id && state.active.reminderSentAt) {
             incomingActive.reminderSentAt = state.active.reminderSentAt;
             incomingActive.reminderCount = getReminderCount(state.active);
           }
-          state.active = incomingActive;
+          // Google not knowing about a block this device is running means the
+          // placeholder write never landed, not that the block stopped existing.
+          // Capture is local-first: keep it and push it up instead of dropping it.
+          if (!incomingActive && state.active && !isStaleActive(state.active)) {
+            queueActiveSync(state.active);
+          } else {
+            state.active = incomingActive;
+          }
         }
         if (result.calendars) applyCalendarStatus(result.calendars);
         pruneActualHistory();
@@ -1514,17 +1544,21 @@
         });
       }
 
+      function isStaleActive(active) {
+        const startedAt = new Date(active?.start).getTime();
+        return Number.isFinite(startedAt) && Date.now() - startedAt >= staleActiveMs;
+      }
+
       function resolveIncomingActive(active) {
-        if (!active) return null;
-        const startedAt = new Date(active.start).getTime();
-        if (!Number.isFinite(startedAt) || Date.now() - startedAt < staleActiveMs) return active;
-        const end = addMinutes(new Date(startedAt), 30);
+        if (!active || !isStaleActive(active)) return active || null;
+        // Close it where it was actually last seen. Truncating to a fixed length
+        // would throw away real recorded time, which is worse than a long block.
         const block = {
           id: active.id,
           categoryId: active.categoryId,
-          note: "Auto-closed (forgot to end) - please fix",
+          note: "Auto-closed (forgot to end) - check the end time",
           start: active.start,
-          end: end.toISOString(),
+          end: new Date().toISOString(),
           googleEventId: active.googleEventId || "",
           syncStatus: "pending",
           syncError: "",
@@ -1533,7 +1567,7 @@
         state.actual.push(block);
         queueActualSync(block);
         logAction(`auto-closed stale active ${categoryShortLabel(active.categoryId)}`);
-        showRecovery(`Forgot to end ${categoryShortLabel(active.categoryId)}. Auto-closed at 30 min, fix the time in Last block.`, "Stale block closed");
+        showRecovery(`Forgot to end ${categoryShortLabel(active.categoryId)}. Closed it now, check the end time in Last block.`, "Stale block closed");
         return null;
       }
 
@@ -2462,6 +2496,7 @@
           renderGoogleStatus("Connected");
           await refreshStatus();
           drainPersistentSyncQueue();
+          ensureActiveBlockSynced();
         } catch (error) {
           renderGoogleStatus(readableError(error));
           showRecovery(readableError(error), "Google Calendar connection failed");
@@ -2487,8 +2522,6 @@
         saveState();
         renderGoogleState();
       }
-
-      const actualHistoryDays = 14;
 
       async function getDirectBootstrapState() {
         await ensureGoogleReady();
@@ -2566,7 +2599,14 @@
           end: { dateTime: end.toISOString(), timeZone: "Asia/Bangkok" },
           extendedProperties: { private: { ld8: block.categoryId, source: "timeblock-reality", status: "active", blockId: block.id } },
         };
-        const result = await writeActualEvent(block.googleEventId, payload);
+        // A retried placeholder write must find its own earlier event, or the retry
+        // creates a second "Active:" for the same block.
+        let googleEventId = block.googleEventId;
+        if (!googleEventId) {
+          const existing = await findDirectEventByBlockId(block.id);
+          if (existing) googleEventId = existing.id;
+        }
+        const result = await writeActualEvent(googleEventId, payload);
         return { active: serializeDirectActiveEvent(result, block), calendars: state.calendars };
       }
 
