@@ -29,8 +29,26 @@ Start/Switch/End, and never reintroduce "wait for GCal" blocking on capture.
   check-in as a real push notification. In-app `setTimeout` is the fallback when
   push is unavailable (iOS suspends timers for backgrounded PWAs).
 - **`calendar-worker/`**: Cloudflare Worker holding Google OAuth for server-side
-  calendar reads. `provision-production.sh` reads the client secret from the
-  terminal only - it is never committed.
+  calendar reads and writes. `provision-production.sh` reads the client secret from
+  the terminal only - it is never committed. It is also the **Apple Watch path**:
+  `POST /v1/s/<1-8>` closes whatever is running and starts that domain, writing the
+  same event shape the app writes, so the wrist and the phone are two clients of one
+  calendar. `GET /v1/running` reports what is going. Both need the
+  `Authorization: Bearer <HERMES_API_TOKEN>` header.
+
+  The Watch has no browser, so the PWA cannot run there; Shortcuts is the only way
+  in. That short path exists because watchOS rejects a URL field that mixes text
+  with a variable ("couldn't convert from Rich Text to URL") and because `3 MM`
+  carries a space that has to be encoded inside a query parameter. One shortcut per
+  domain, a typed URL and one header, nothing else - duplicate the first shortcut to
+  avoid retyping the token.
+
+- **Only one block runs at a time**, and two writers can each open a placeholder
+  before either sees the other. Bootstrap settles it: same domain means nobody
+  switched, so the earliest start wins and the rest are deleted; different domains
+  mean a real switch, so the newest wins and the older ones close where it began.
+  Starting from the worker closes every placeholder it finds. Do not remove this -
+  it is what stops the wrist and the phone from duplicating each other.
 - **`hermes/google_calendar.py`**: connector used by scripts (e.g. the quality gate)
   to read `Actual-Time Log` without a browser.
 - **`scripts/audit_actual_time_log.py`**: read-only quality gate. Capacity learning
