@@ -276,8 +276,11 @@ export class CalendarCredential {
   // Switching domains from the Watch: close whatever is running at this instant and
   // open the next one, exactly as tapping a domain in the app does.
   async startBlock(request) {
-    const body = (await readJson(request)) || {};
-    const domain = resolveDomain(body.domain);
+    // A query parameter keeps the Shortcut to a URL and one header. Building a JSON
+    // body by hand on a phone is where this gets fiddly, so accept either.
+    const fromQuery = new URL(request.url).searchParams.get("domain");
+    const body = fromQuery ? {} : (await readJson(request)) || {};
+    const domain = resolveDomain(fromQuery ?? body.domain);
     if (!domain) {
       return json({ error: `Unknown domain. Use one of: ${LD8.map((item) => item.code).join(", ")}` }, 400);
     }
