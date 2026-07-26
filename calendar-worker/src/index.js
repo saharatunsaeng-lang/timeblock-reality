@@ -6,6 +6,20 @@ const PLAN_CALENDARS = ["1 BD", "2 SP", "3 MM", "4 RS", "5 CM", "6 FN", "7 CT", 
 const ACTUAL_CALENDARS = ["Actual-Time Log", "Actual - Time Log"];
 const STATE_TTL_MS = 10 * 60 * 1000;
 const CONFIRMATION_TTL_MS = 30 * 60 * 1000;
+// Written so a block started from the Watch is indistinguishable from one the app
+// wrote: same titles, same private properties, same placeholder length.
+const LD8 = [
+  { id: "bd", code: "1 BD" },
+  { id: "sp", code: "2 SP" },
+  { id: "mm", code: "3 MM" },
+  { id: "rs", code: "4 RS" },
+  { id: "cm", code: "5 CM" },
+  { id: "fn", code: "6 FN" },
+  { id: "ct", code: "7 CT" },
+  { id: "ls", code: "8 LS" },
+];
+const ACTIVE_PLACEHOLDER_MINUTES = 360;
+const MIN_BLOCK_MS = 60 * 1000;
 
 export default {
   async fetch(request, env) {
@@ -41,6 +55,9 @@ export class CalendarCredential {
     if (request.method === "GET" && url.pathname === "/v1/events") return this.events(url);
     if (request.method === "POST" && url.pathname === "/v1/preview-copy") return this.previewCopy(request);
     if (request.method === "POST" && url.pathname === "/v1/confirm-copy") return this.confirmCopy(request);
+    if (request.method === "POST" && url.pathname === "/v1/delete-exact-duplicate") return this.deleteExactDuplicate(request);
+    if (request.method === "POST" && url.pathname === "/v1/start-block") return this.startBlock(request);
+    if (request.method === "GET" && url.pathname === "/v1/running") return this.running();
     return json({ error: "Not found" }, 404);
   }
 
@@ -126,6 +143,28 @@ export class CalendarCredential {
     return json({ start: source, end, calendars: result });
   }
 
+  async deleteExactDuplicate(request) {
+    const body = await readJson(request);
+    const calendarName = typeof body.calendar === "string" ? body.calendar : "";
+    const start = validDateKey(body.start);
+    const end = validDateKey(body.end);
+    if (!PLAN_CALENDARS.includes(calendarName) || !start || !end || start >= end || !body.event) {
+      return json({ error: "calendar, start, end, and event are required." }, 400);
+    }
+    const calendar = (await this.planCalendarMap()).get(calendarName);
+    if (!calendar) return json({ error: `Calendar not found: ${calendarName}` }, 404);
+    const key = eventKey(body.event);
+    const matches = (await this.listEvents(calendar.id, start, end)).filter((event) => eventKey(event) === key);
+    if (matches.length !== 2) {
+      return json({ error: "Deletion requires exactly two identical events.", matches: matches.map(publicEvent) }, 409);
+    }
+    const duplicate = matches[1];
+    await this.google(`/calendars/${encodeURIComponent(calendar.id)}/events/${encodeURIComponent(duplicate.id)}`, { method: "DELETE" });
+    const remaining = (await this.listEvents(calendar.id, start, end)).filter((event) => eventKey(event) === key);
+    if (remaining.length !== 1) throw new Error(`Duplicate deletion verification failed: expected 1 remaining, found ${remaining.length}.`);
+    return json({ deleted: publicEvent(duplicate), remaining: remaining.length, calendar: calendarName });
+  }
+
   async previewCopy(request) {
     const body = await readJson(request);
     const source = validDateKey(body.source);
@@ -153,10 +192,11 @@ export class CalendarCredential {
       return json({ error: "Target conflicts exist. Confirm again with allowConflicts: true only after reviewing them.", conflicts: record.preview.conflicts }, 409);
     }
 
+    const maxEvents = Number.isInteger(body.maxEvents) && body.maxEvents > 0 ? Math.min(body.maxEvents, 25) : 25;
     record.consumed = true;
     await this.state.storage.put(`confirmation:${confirmationId}`, record);
-    const result = await this.copyPreviewEvents(record.preview);
-    return json({ ...result, source: record.preview.source, target: record.preview.target, confirmationId });
+    const result = await this.copyPreviewEvents(record.preview, maxEvents);
+    return json({ ...result, source: record.preview.source, target: record.preview.target, confirmationId, maxEvents });
   }
 
   async buildCopyPreview(source, target) {
@@ -197,33 +237,139 @@ export class CalendarCredential {
     return { mode: "preview", source, target, sourceCount, ready, duplicates, conflicts, calendars: plans };
   }
 
-  async copyPreviewEvents(preview) {
+  async copyPreviewEvents(preview, maxEvents) {
     let created = 0;
     let skipped = 0;
     const createdByCalendar = [];
     for (const plan of preview.calendars) {
-      if (!plan.found) continue;
+      if (!plan.found || created >= maxEvents) continue;
       const current = await this.listEvents(plan.calendarId, preview.target, addDays(preview.target, 7));
       const currentKeys = new Set(current.map(eventKey));
-      let calendarCreated = 0;
+      const pending = [];
       let calendarSkipped = 0;
       for (const item of plan.events) {
-        if (currentKeys.has(eventKey(item.shiftedEvent))) {
+        const key = eventKey(item.shiftedEvent);
+        if (currentKeys.has(key)) {
           skipped += 1;
           calendarSkipped += 1;
           continue;
         }
+        if (created + pending.length >= maxEvents) break;
+        // Reserve before dispatch so equivalent source events cannot be posted twice.
+        currentKeys.add(key);
+        pending.push(item);
+      }
+      // Calendar writes are deliberately throttled to stay below Google per-user limits.
+      await mapWithConcurrency(pending, 1, async (item) => {
         await this.google(`/calendars/${encodeURIComponent(plan.calendarId)}/events`, {
           method: "POST",
           body: JSON.stringify(copyPayload(item.shiftedEvent)),
         });
-        currentKeys.add(eventKey(item.shiftedEvent));
-        created += 1;
-        calendarCreated += 1;
-      }
+      });
+      const calendarCreated = pending.length;
+      created += calendarCreated;
       createdByCalendar.push({ calendar: plan.calendar, created: calendarCreated, skipped: calendarSkipped });
     }
     return { mode: "executed", created, skipped, calendars: createdByCalendar };
+  }
+
+  // Switching domains from the Watch: close whatever is running at this instant and
+  // open the next one, exactly as tapping a domain in the app does.
+  async startBlock(request) {
+    const body = (await readJson(request)) || {};
+    const domain = resolveDomain(body.domain);
+    if (!domain) {
+      return json({ error: `Unknown domain. Use one of: ${LD8.map((item) => item.code).join(", ")}` }, 400);
+    }
+
+    const calendar = await this.actualCalendar();
+    if (!calendar) return json({ error: `Calendar not found: ${ACTUAL_CALENDARS[0]}` }, 404);
+
+    const now = new Date();
+    const running = await this.findActiveEvent(calendar.id, now);
+
+    if (running && privateProps(running).ld8 === domain.id) {
+      // A second tap on the domain already running would only split the timeline.
+      return json({
+        unchanged: true,
+        running: domain.code,
+        since: running.start?.dateTime || null,
+        message: `${domain.code} already running`,
+      });
+    }
+
+    let closed = null;
+    if (running) closed = await this.closeActiveEvent(calendar.id, running, now);
+
+    const end = new Date(now.getTime() + ACTIVE_PLACEHOLDER_MINUTES * 60 * 1000);
+    await this.google(`/calendars/${encodeURIComponent(calendar.id)}/events`, {
+      method: "POST",
+      body: JSON.stringify({
+        summary: `Active: ${domain.code}`,
+        description: "Active block from TimeBlock Reality",
+        start: { dateTime: now.toISOString(), timeZone: "Asia/Bangkok" },
+        end: { dateTime: end.toISOString(), timeZone: "Asia/Bangkok" },
+        extendedProperties: {
+          private: { ld8: domain.id, source: "timeblock-reality", status: "active", blockId: randomId() },
+        },
+      }),
+    });
+
+    return json({ started: domain.code, at: hhmm(now), closed });
+  }
+
+  async running() {
+    const calendar = await this.actualCalendar();
+    if (!calendar) return json({ error: `Calendar not found: ${ACTUAL_CALENDARS[0]}` }, 404);
+    const now = new Date();
+    const event = await this.findActiveEvent(calendar.id, now);
+    if (!event) return json({ running: null, message: "Nothing running" });
+    const code = domainById(privateProps(event).ld8)?.code || event.summary?.replace("Active: ", "") || "?";
+    const startedAt = new Date(event.start.dateTime);
+    const minutes = Math.max(0, Math.round((now - startedAt) / 60000));
+    return json({ running: code, since: hhmm(startedAt), minutes, message: `${code} ${formatSpan(minutes)}` });
+  }
+
+  async findActiveEvent(calendarId, now) {
+    // The placeholder can have been opened well before today, so look back a little.
+    const from = new Date(now.getTime() - 3 * 86_400_000).toISOString().slice(0, 10);
+    const to = new Date(now.getTime() + 2 * 86_400_000).toISOString().slice(0, 10);
+    const events = await this.listEvents(calendarId, from, to);
+    return events
+      .filter((event) => privateProps(event).status === "active" && event.start?.dateTime)
+      .sort((a, b) => new Date(b.start.dateTime) - new Date(a.start.dateTime))[0] || null;
+  }
+
+  async closeActiveEvent(calendarId, event, now) {
+    const startedAt = new Date(event.start.dateTime);
+    const props = privateProps(event);
+    const code = domainById(props.ld8)?.code || event.summary?.replace("Active: ", "") || "?";
+    const path = `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(event.id)}`;
+
+    // Same rule as the app: a block under a minute is a mistap, not real time.
+    if (now - startedAt < MIN_BLOCK_MS) {
+      await this.google(path, { method: "DELETE" });
+      return { discarded: code };
+    }
+
+    await this.google(path, {
+      method: "PATCH",
+      body: JSON.stringify({
+        summary: `Actual: ${code}`,
+        end: { dateTime: now.toISOString(), timeZone: "Asia/Bangkok" },
+        extendedProperties: { private: { ...props, status: "actual" } },
+      }),
+    });
+    return { domain: code, minutes: Math.round((now - startedAt) / 60000) };
+  }
+
+  async actualCalendar() {
+    const calendars = await this.readableCalendarMap();
+    for (const name of ACTUAL_CALENDARS) {
+      const found = calendars.get(name);
+      if (found) return found;
+    }
+    return null;
   }
 
   async planCalendarMap() {
@@ -303,6 +449,40 @@ function timingSafeEqual(a, b) {
   return result === 0;
 }
 
+// A Shortcut menu sends whatever the button was labelled, so accept the code, the
+// short id, or just the number.
+function resolveDomain(value) {
+  const text = String(value ?? "").trim().toLowerCase();
+  if (!text) return null;
+  return LD8.find((item) => {
+    const code = item.code.toLowerCase();
+    return text === code || text === item.id || text === code.slice(2) || text === code.slice(0, 1);
+  }) || null;
+}
+
+function domainById(id) {
+  return LD8.find((item) => item.id === id) || null;
+}
+
+function privateProps(event) {
+  return event?.extendedProperties?.private || {};
+}
+
+function hhmm(date) {
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Bangkok",
+  }).format(date);
+}
+
+function formatSpan(minutes) {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (!hours) return `${rest}m`;
+  return rest ? `${hours}h ${rest}m` : `${hours}h`;
+}
+
 function validDateKey(value) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const parsed = new Date(`${value}T00:00:00Z`);
@@ -332,9 +512,23 @@ function shiftEvent(event, shiftMs) {
 }
 
 function eventKey(event) {
-  const start = event.start?.dateTime || event.start?.date || "";
-  const end = event.end?.dateTime || event.end?.date || "";
+  const start = canonicalDateTime(event.start?.dateTime) || event.start?.date || "";
+  const end = canonicalDateTime(event.end?.dateTime) || event.end?.date || "";
   return [event.summary || "", start, end, Boolean(event.start?.date)].join("|");
+}
+
+function canonicalDateTime(value) {
+  if (!value) return "";
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : String(value);
+}
+
+async function mapWithConcurrency(items, limit, worker) {
+  const queue = [...items];
+  const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
+    while (queue.length) await worker(queue.shift());
+  });
+  await Promise.all(workers);
 }
 
 function overlaps(first, second) {
