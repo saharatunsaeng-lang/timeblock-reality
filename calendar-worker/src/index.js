@@ -305,8 +305,13 @@ export class CalendarCredential {
       });
     }
 
+    // Close every placeholder, not just the newest: the phone may have opened one
+    // this side had not seen yet, and leaving it running duplicates the timeline.
     let closed = null;
-    if (running) closed = await this.closeActiveEvent(calendar.id, running, now);
+    for (const stale of await this.findActiveEvents(calendar.id, now)) {
+      const result = await this.closeActiveEvent(calendar.id, stale, now);
+      if (stale === running) closed = result;
+    }
 
     const end = new Date(now.getTime() + ACTIVE_PLACEHOLDER_MINUTES * 60 * 1000);
     await this.google(`/calendars/${encodeURIComponent(calendar.id)}/events`, {
@@ -337,14 +342,18 @@ export class CalendarCredential {
     return json({ running: code, since: hhmm(startedAt), minutes, message: `${code} ${formatSpan(minutes)}` });
   }
 
-  async findActiveEvent(calendarId, now) {
+  async findActiveEvents(calendarId, now) {
     // The placeholder can have been opened well before today, so look back a little.
     const from = new Date(now.getTime() - 3 * 86_400_000).toISOString().slice(0, 10);
     const to = new Date(now.getTime() + 2 * 86_400_000).toISOString().slice(0, 10);
     const events = await this.listEvents(calendarId, from, to);
     return events
       .filter((event) => privateProps(event).status === "active" && event.start?.dateTime)
-      .sort((a, b) => new Date(b.start.dateTime) - new Date(a.start.dateTime))[0] || null;
+      .sort((a, b) => new Date(b.start.dateTime) - new Date(a.start.dateTime));
+  }
+
+  async findActiveEvent(calendarId, now) {
+    return (await this.findActiveEvents(calendarId, now))[0] || null;
   }
 
   async closeActiveEvent(calendarId, event, now) {

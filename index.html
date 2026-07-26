@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260725-honour-deletes" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260726-one-active" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -967,7 +967,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20260725-honour-deletes"></script>
+    <script src="push-config.js?v=20260726-one-active"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -2709,6 +2709,44 @@
         renderGoogleState();
       }
 
+      // Only one block can be running. The phone and the Watch each open a
+      // placeholder without seeing the other's, so whoever reads next settles it.
+      async function resolveSingleActiveEvent(events) {
+        const running = events
+          .filter((event) => event.extendedProperties?.private?.status === "active" && event.start?.dateTime)
+          .sort((a, b) => new Date(a.start.dateTime) - new Date(b.start.dateTime));
+        if (running.length < 2) return running[0] || null;
+
+        const domainOf = (event) => event.extendedProperties?.private?.ld8 || inferCategoryId(event.summary || "");
+        const sameDomain = running.every((event) => domainOf(event) === domainOf(running[0]));
+        // Same domain on both means nobody actually switched, so the earlier start is
+        // the truth and the rest are duplicates. Different domains mean a real switch,
+        // so the newest wins and the older ones close where it began.
+        const keep = sameDomain ? running[0] : running[running.length - 1];
+
+        for (const stale of running) {
+          if (stale === keep) continue;
+          try {
+            if (sameDomain) {
+              await deleteDirectEvent(stale.id);
+            } else {
+              await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events/${encodeURIComponent(stale.id)}`, {
+                method: "PATCH",
+                body: JSON.stringify({
+                  summary: `Actual: ${categoryShortLabel(domainOf(stale))}`,
+                  end: { dateTime: keep.start.dateTime, timeZone: "Asia/Bangkok" },
+                  extendedProperties: { private: { ...(stale.extendedProperties?.private || {}), status: "actual" } },
+                }),
+              });
+            }
+            logAction(`settled duplicate active ${categoryShortLabel(domainOf(stale))}`);
+          } catch (error) {
+            // Leave it for the next bootstrap rather than failing the whole read.
+          }
+        }
+        return keep;
+      }
+
       async function getDirectBootstrapState() {
         await ensureGoogleReady();
         const rangeStart = addDays(new Date(), -actualHistoryDays);
@@ -2718,7 +2756,7 @@
           .filter((event) => event.extendedProperties?.private?.status !== "active")
           .map(serializeDirectActualEvent)
           .filter(Boolean);
-        const activeEvent = events.find((event) => event.extendedProperties?.private?.status === "active");
+        const activeEvent = await resolveSingleActiveEvent(events);
         const active = activeEvent ? serializeDirectActiveEvent(activeEvent) : null;
         return {
           actual,
