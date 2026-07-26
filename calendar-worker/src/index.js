@@ -57,6 +57,10 @@ export class CalendarCredential {
     if (request.method === "POST" && url.pathname === "/v1/confirm-copy") return this.confirmCopy(request);
     if (request.method === "POST" && url.pathname === "/v1/delete-exact-duplicate") return this.deleteExactDuplicate(request);
     if (request.method === "POST" && url.pathname === "/v1/start-block") return this.startBlock(request);
+    // Shortcuts on watchOS is strict about URLs: a space needs encoding and a field
+    // mixing text with a variable arrives as rich text. This form has neither, so it
+    // can be typed straight into the action.
+    if (url.pathname.startsWith("/v1/s/")) return this.startBlock(request, url.pathname.slice(6));
     if (request.method === "GET" && url.pathname === "/v1/running") return this.running();
     return json({ error: "Not found" }, 404);
   }
@@ -275,12 +279,12 @@ export class CalendarCredential {
 
   // Switching domains from the Watch: close whatever is running at this instant and
   // open the next one, exactly as tapping a domain in the app does.
-  async startBlock(request) {
+  async startBlock(request, fromPath) {
     // A query parameter keeps the Shortcut to a URL and one header. Building a JSON
     // body by hand on a phone is where this gets fiddly, so accept either.
-    const fromQuery = new URL(request.url).searchParams.get("domain");
+    const fromQuery = fromPath ?? new URL(request.url).searchParams.get("domain");
     const body = fromQuery ? {} : (await readJson(request)) || {};
-    const domain = resolveDomain(fromQuery ?? body.domain);
+    const domain = resolveDomain(decodeURIComponent(fromQuery ?? body.domain ?? ""));
     if (!domain) {
       return json({ error: `Unknown domain. Use one of: ${LD8.map((item) => item.code).join(", ")}` }, 400);
     }
