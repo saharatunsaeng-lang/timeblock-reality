@@ -18,6 +18,7 @@ const ACTIVE_STATUS = "active";
 const ACTUAL_STATUS = "actual";
 const ACTIVE_PLACEHOLDER_MINUTES = 360;
 const BLOCK_LOOKUP_WINDOW_DAYS = 3;
+const PRIMARY_APP_URL = "https://saharatunsaeng-lang.github.io/timeblock-reality/";
 
 function doGet(event) {
   if (event?.parameter?.mode === "duplicate-ld8") {
@@ -45,8 +46,15 @@ function doGet(event) {
       .setTitle("TimeBlock Audit");
   }
 
-  return HtmlService.createHtmlOutputFromFile("Index")
-    .setTitle("TimeBlock Reality")
+  return HtmlService.createHtmlOutput(
+    `<base target="_top">
+     <script>
+       const primaryAppUrl = ${JSON.stringify(PRIMARY_APP_URL)};
+       try { window.top.location.replace(primaryAppUrl); } catch (error) {}
+     </script>
+     <p><a href="${PRIMARY_APP_URL}" target="_top">Open TimeBlock Reality</a></p>`,
+  )
+    .setTitle("Opening TimeBlock Reality")
     .addMetaTag("viewport", "width=device-width, initial-scale=1, viewport-fit=cover");
 }
 
