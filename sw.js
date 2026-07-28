@@ -1,9 +1,9 @@
 const cacheName = "timeblock-reality-v30-one-active";
 const assets = [
-  "./?v=20260726-one-active",
-  "index.html?v=20260726-one-active",
+  "./?v=20260728-watch-refresh",
+  "index.html?v=20260728-watch-refresh",
   "manifest.webmanifest?v=20260726-one-active",
-  "push-config.js?v=20260726-one-active",
+  "push-config.js?v=20260728-watch-refresh",
   "icon.svg",
 ];
 

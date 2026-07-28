@@ -974,7 +974,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20260726-one-active"></script>
+    <script src="push-config.js?v=20260728-watch-refresh"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -996,6 +996,7 @@
       const maxSyncAttempts = 3;
       // How far back bootstrap reads history, and how much of it is kept locally.
       const actualHistoryDays = 14;
+      const foregroundWatchRefreshMs = 30 * 1000;
       // A night of sleep is captured as one block and routinely runs 9-10 hours, so
       // this only catches a block left running well beyond any plausible session.
       const staleActiveMs = 20 * 60 * 60 * 1000;
@@ -1120,6 +1121,9 @@
         drainPersistentSyncQueue();
         ensureActiveBlockSynced();
         refreshStatus();
+        window.setInterval(() => {
+          if (!document.hidden) refreshStatus();
+        }, foregroundWatchRefreshMs);
         setInterval(tickActiveTimer, 1000);
         if ("serviceWorker" in navigator) {
           navigator.serviceWorker.register("sw.js")
