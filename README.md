@@ -51,7 +51,7 @@ Runtime behavior:
 ## Current scope
 
 - Quick actual capture.
-- Switch capture: tapping another LD8 ends the current actual block and starts the new one.
+- Switch capture: every LD8 tap ends the current actual block and starts a new one, including tapping the same LD8 again.
 - Fix last block.
 - Visible GCal sync status and retry sync for the last actual block.
 - Manual plan blocks.

@@ -12,6 +12,15 @@ This Worker is the HTTPS OAuth broker and Google Calendar API boundary for Herme
 
 All `/v1/*` requests require `Authorization: Bearer <HERMES_API_TOKEN>`. The token stays in the local macOS Keychain and in a Cloudflare Worker secret; it is never sent to Discord.
 
+## Paired app and Watch capture
+
+The Apple Watch Shortcuts and a paired PWA use the same server-side switch path.
+Every domain tap closes every active placeholder at that instant, then creates one
+new active block. This includes tapping the domain already running: it records a
+new block rather than treating the tap as a no-op. The paired PWA sends a stable
+`blockId`, so retrying after a lost network response cannot create another active
+placeholder.
+
 ## One-time production setup
 
 1. Deploy once to obtain the `workers.dev` URL.

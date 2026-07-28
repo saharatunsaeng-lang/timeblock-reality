@@ -974,7 +974,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20260728-watch-refresh"></script>
+    <script src="push-config.js?v=20260729-atomic-switch"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -1024,6 +1024,7 @@
       let pendingSyncCount = 0;
       let syncChain = Promise.resolve();
       let persistentSyncInFlight = false;
+      let workerSwitchInFlight = false;
       let fixTargetBlockId = "";
       let activeSignalTimer = 0;
       let backgroundPushReady = false;
@@ -1207,7 +1208,7 @@
         els.manualEnd.value = toTimeInput(addMinutes(roundDate(now, 15), 30));
       }
 
-      function startQuickBlock(categoryId) {
+      async function startQuickBlock(categoryId) {
         if (isCaptureLocked()) return;
         localActionInFlight = true;
         activateTab("capture");
@@ -1220,14 +1221,23 @@
             id: crypto.randomUUID(),
             categoryId,
             start: transitionAt.toISOString(),
+            workerPending: hasPairedWatchWorker(),
           };
           saveState();
           syncHomeScreenBadge();
           syncBackgroundPushState({ keepalive: true });
           scheduleActiveSignal();
           render();
-          if (endedBlock) queueActualSync(endedBlock);
-          queueActiveSync(state.active);
+          if (hasPairedWatchWorker()) {
+            const saved = await syncActiveToPairedWorker(state.active);
+            if (!saved) {
+              if (endedBlock) queueActualSync(endedBlock);
+              queueActiveSync(state.active);
+            }
+          } else {
+            if (endedBlock) queueActualSync(endedBlock);
+            queueActiveSync(state.active);
+          }
         } catch (error) {
           updateSyncStatus(readableError(error), true);
         } finally {
@@ -1318,7 +1328,12 @@
       // persistent queue - so a failed placeholder write has to be retried here or
       // Google never learns the block exists.
       function ensureActiveBlockSynced() {
-        if (!googleAccessToken || !state.active || state.active.googleEventId) return;
+        if (!state.active) return;
+        if (state.active.workerPending && hasPairedWatchWorker()) {
+          syncActiveToPairedWorker(state.active);
+          return;
+        }
+        if (!googleAccessToken || state.active.googleEventId) return;
         queueActiveSync(state.active);
       }
 
@@ -1600,6 +1615,77 @@
         return localStorage.getItem(workerDeviceTokenKey) || "";
       }
 
+      function hasPairedWatchWorker() {
+        return Boolean(calendarWorkerUrl && workerDeviceToken());
+      }
+
+      async function syncActiveToPairedWorker(activeBlock) {
+        if (!hasPairedWatchWorker() || !activeBlock || workerSwitchInFlight) return false;
+        workerSwitchInFlight = true;
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 8000);
+        try {
+          const response = await fetch(`${calendarWorkerUrl}/app/start-block`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${workerDeviceToken()}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ domain: activeBlock.categoryId, blockId: activeBlock.id }),
+            cache: "no-store",
+            signal: controller.signal,
+          });
+          const result = await response.json();
+          if (response.status === 401) {
+            localStorage.removeItem(workerDeviceTokenKey);
+            els.watchSyncStatus.textContent = "Pair again";
+            els.pairWatchButton.textContent = "Pair once";
+            return false;
+          }
+          if (!response.ok || !result.active) throw new Error(result.error || `Watch switch failed: ${response.status}`);
+          applyPairedWorkerSwitch(result, activeBlock.id);
+          return true;
+        } catch (error) {
+          // Keep the optimistic local block. Bootstrap retries it only when it is
+          // newer than the worker's active block, so an old phone cannot win later.
+          logAction(`watch switch pending: ${readableError(error)}`);
+          return false;
+        } finally {
+          window.clearTimeout(timeout);
+          workerSwitchInFlight = false;
+        }
+      }
+
+      function applyPairedWorkerSwitch(result, expectedActiveId) {
+        const previous = state.active;
+        const checkins = previous && previous.id === expectedActiveId ? getReminderCount(previous) : 0;
+        const reminderSentAt = previous && previous.id === expectedActiveId ? previous.reminderSentAt || "" : "";
+        if (result.active && state.active?.id === expectedActiveId) {
+          state.active = {
+            ...result.active,
+            reminderCount: checkins,
+            reminderSentAt,
+          };
+        }
+        const closedBlocks = (result.closed || []).map((item) => item?.block).filter(Boolean);
+        closedBlocks.forEach((serverBlock) => {
+          const localBlock = state.actual.find((block) => block.id === serverBlock.id);
+          if (localBlock) Object.assign(localBlock, serverBlock, { syncStatus: "synced", syncError: "" });
+          else state.actual.push(serverBlock);
+        });
+        const closedIds = new Set(closedBlocks.map((block) => block.id));
+        if (closedIds.size) state.syncQueue = state.syncQueue.filter((task) => !closedIds.has(task.blockId));
+        cleanupPersistentSyncQueue();
+        saveState();
+        els.watchSyncStatus.textContent = "Connected";
+        els.serverStatus.textContent = "Saved across devices";
+        applyIdleSyncChip();
+        syncHomeScreenBadge();
+        syncBackgroundPushState({ keepalive: true });
+        scheduleActiveSignal();
+        render();
+      }
+
       async function refreshFromWatchWorker() {
         const token = workerDeviceToken();
         if (!calendarWorkerUrl || !token) {
@@ -1683,7 +1769,13 @@
           // Google not knowing about a block this device is running means the
           // placeholder write never landed, not that the block stopped existing.
           // Capture is local-first: keep it and push it up instead of dropping it.
-          if (!incomingActive && state.active && !isStaleActive(state.active)) {
+          const keepPendingWorkerSwitch = Boolean(
+            state.active?.workerPending
+              && (!incomingActive || new Date(state.active.start) > new Date(incomingActive.start))
+          );
+          if (keepPendingWorkerSwitch) {
+            ensureActiveBlockSynced();
+          } else if (!incomingActive && state.active && !isStaleActive(state.active)) {
             queueActiveSync(state.active);
           } else {
             state.active = incomingActive;

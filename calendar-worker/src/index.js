@@ -70,6 +70,10 @@ export class CalendarCredential {
     if (request.method === "GET" && url.pathname === "/v1/running") return this.running();
     if (request.method === "POST" && url.pathname === "/v1/create-pairing") return this.createPairing();
     if (request.method === "POST" && url.pathname === "/app/pair") return this.pair(request);
+    if (request.method === "POST" && url.pathname === "/app/start-block") {
+      if (!(await this.validPwaToken(request))) return json({ error: "Pair this device first" }, 401);
+      return this.startBlock(request);
+    }
     if (request.method === "GET" && url.pathname === "/app/bootstrap") return this.appBootstrap(request);
     return json({ error: "Not found" }, 404);
   }
@@ -286,8 +290,8 @@ export class CalendarCredential {
     return { mode: "executed", created, skipped, calendars: createdByCalendar };
   }
 
-  // Switching domains from the Watch: close whatever is running at this instant and
-  // open the next one, exactly as tapping a domain in the app does.
+  // Every domain tap is a switch, including a second tap on the domain already
+  // running. The Watch and paired PWA both use this one transaction.
   async startBlock(request, fromPath) {
     // A query parameter keeps the Shortcut to a URL and one header. Building a JSON
     // body by hand on a phone is where this gets fiddly, so accept either.
@@ -302,28 +306,28 @@ export class CalendarCredential {
     if (!calendar) return json({ error: `Calendar not found: ${ACTUAL_CALENDARS[0]}` }, 404);
 
     const now = new Date();
-    const running = await this.findActiveEvent(calendar.id, now);
-
-    if (running && privateProps(running).ld8 === domain.id) {
-      // A second tap on the domain already running would only split the timeline.
-      return json({
-        unchanged: true,
-        running: domain.code,
-        since: running.start?.dateTime || null,
-        message: `${domain.code} already running`,
-      });
-    }
+    const requestedBlockId = typeof body.blockId === "string" && body.blockId.trim() ? body.blockId.trim() : randomId();
+    const activeEvents = await this.findActiveEvents(calendar.id, now);
+    const existing = activeEvents.find((event) => privateProps(event).blockId === requestedBlockId);
 
     // Close every placeholder, not just the newest: the phone may have opened one
     // this side had not seen yet, and leaving it running duplicates the timeline.
-    let closed = null;
-    for (const stale of await this.findActiveEvents(calendar.id, now)) {
+    const closed = [];
+    for (const stale of activeEvents) {
+      if (stale === existing) continue;
       const result = await this.closeActiveEvent(calendar.id, stale, now);
-      if (stale === running) closed = result;
+      closed.push(result);
+    }
+
+    // A lost phone response can retry the exact same command. Keep its existing
+    // active placeholder instead of creating a duplicate, while still closing any
+    // older active block the retry discovers.
+    if (existing) {
+      return json({ started: domain.code, at: hhmm(now), active: appActiveEvent(existing), closed, retried: true });
     }
 
     const end = new Date(now.getTime() + ACTIVE_PLACEHOLDER_MINUTES * 60 * 1000);
-    await this.google(`/calendars/${encodeURIComponent(calendar.id)}/events`, {
+    const created = await this.google(`/calendars/${encodeURIComponent(calendar.id)}/events`, {
       method: "POST",
       body: JSON.stringify({
         summary: `Active: ${domain.code}`,
@@ -331,19 +335,19 @@ export class CalendarCredential {
         start: { dateTime: now.toISOString(), timeZone: "Asia/Bangkok" },
         end: { dateTime: end.toISOString(), timeZone: "Asia/Bangkok" },
         extendedProperties: {
-          private: { ld8: domain.id, source: "timeblock-reality", status: "active", blockId: randomId() },
+          private: { ld8: domain.id, source: "timeblock-reality", status: "active", blockId: requestedBlockId },
         },
       }),
     });
 
-    return json({ started: domain.code, at: hhmm(now), closed });
+    return json({ started: domain.code, at: hhmm(now), active: appActiveEvent(created), closed });
   }
 
   async running() {
     const calendar = await this.actualCalendar();
     if (!calendar) return json({ error: `Calendar not found: ${ACTUAL_CALENDARS[0]}` }, 404);
     const now = new Date();
-    const event = await this.findActiveEvent(calendar.id, now);
+    const event = await this.resolveSingleActiveEvent(calendar.id, now);
     if (!event) return json({ running: null, message: "Nothing running" });
     const code = domainById(privateProps(event).ld8)?.code || event.summary?.replace("Active: ", "") || "?";
     const startedAt = new Date(event.start.dateTime);
@@ -374,7 +378,7 @@ export class CalendarCredential {
     if (!calendar) return json({ error: `Calendar not found: ${ACTUAL_CALENDARS[0]}` }, 404);
     const today = new Date().toISOString().slice(0, 10);
     const actualEvents = await this.listEvents(calendar.id, addDays(today, -14), addDays(today, 7));
-    const activeEvent = await this.findActiveEvent(calendar.id, new Date());
+    const activeEvent = await this.resolveSingleActiveEvent(calendar.id, new Date());
     const planMap = await this.planCalendarMap();
     const planEvents = [];
     for (const domain of LD8) {
@@ -411,6 +415,21 @@ export class CalendarCredential {
     return (await this.findActiveEvents(calendarId, now))[0] || null;
   }
 
+  async resolveSingleActiveEvent(calendarId, now) {
+    const activeEvents = await this.findActiveEvents(calendarId, now);
+    if (activeEvents.length < 2) return activeEvents[0] || null;
+
+    // A newer tap is always intentional, even when it is the same LD8 domain.
+    // Close older placeholders at that timestamp so old app/watch races become
+    // ordinary completed actual blocks instead of running in parallel.
+    const keep = activeEvents[0];
+    const switchedAt = new Date(keep.start.dateTime);
+    for (const stale of activeEvents.slice(1)) {
+      await this.closeActiveEvent(calendarId, stale, switchedAt);
+    }
+    return keep;
+  }
+
   async closeActiveEvent(calendarId, event, now) {
     const startedAt = new Date(event.start.dateTime);
     const props = privateProps(event);
@@ -423,7 +442,7 @@ export class CalendarCredential {
       return { discarded: code };
     }
 
-    await this.google(path, {
+    const updated = await this.google(path, {
       method: "PATCH",
       body: JSON.stringify({
         summary: `Actual: ${code}`,
@@ -431,7 +450,7 @@ export class CalendarCredential {
         extendedProperties: { private: { ...props, status: "actual" } },
       }),
     });
-    return { domain: code, minutes: Math.round((now - startedAt) / 60000) };
+    return { domain: code, minutes: Math.round((now - startedAt) / 60000), block: appActualEvent(updated) };
   }
 
   async actualCalendar() {
