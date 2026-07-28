@@ -1,9 +1,9 @@
-const cacheName = "timeblock-reality-v31-atomic-switch";
+const cacheName = "timeblock-reality-v32-single-authority";
 const assets = [
-  "./?v=20260729-atomic-switch",
-  "index.html?v=20260729-atomic-switch",
+  "./?v=20260729-single-authority",
+  "index.html?v=20260729-single-authority",
   "manifest.webmanifest?v=20260726-one-active",
-  "push-config.js?v=20260729-atomic-switch",
+  "push-config.js?v=20260729-single-authority",
   "icon.svg",
 ];
 

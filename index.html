@@ -974,7 +974,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20260729-atomic-switch"></script>
+    <script src="push-config.js?v=20260729-single-authority"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -1229,11 +1229,7 @@
           scheduleActiveSignal();
           render();
           if (hasPairedWatchWorker()) {
-            const saved = await syncActiveToPairedWorker(state.active);
-            if (!saved) {
-              if (endedBlock) queueActualSync(endedBlock);
-              queueActiveSync(state.active);
-            }
+            await syncActiveToPairedWorker(state.active);
           } else {
             if (endedBlock) queueActualSync(endedBlock);
             queueActiveSync(state.active);
@@ -1251,6 +1247,7 @@
         const end = new Date(endAt);
         const start = new Date(state.active.start);
         const googleEventId = state.active.googleEventId || "";
+        const workerPending = hasPairedWatchWorker();
         if (end.getTime() - start.getTime() < 60 * 1000) {
           state.active = null;
           saveState();
@@ -1267,6 +1264,7 @@
           googleEventId,
           syncStatus: "pending",
           syncError: "",
+          workerPending,
           updatedAt: new Date().toISOString(),
         };
         state.actual.push(block);
@@ -1300,6 +1298,14 @@
       }
 
       function queueActiveSync(activeBlock) {
+        if (hasPairedWatchWorker()) {
+          if (activeBlock) {
+            activeBlock.workerPending = true;
+            saveState();
+            syncActiveToPairedWorker(activeBlock);
+          }
+          return;
+        }
         if (!googleAccessToken || !activeBlock) {
           render();
           return;
@@ -1382,6 +1388,10 @@
         if (operationInFlight) return;
         const block = getLastActualBlock();
         if (!block) return;
+        if (block.workerPending && hasPairedWatchWorker()) {
+          ensureActiveBlockSynced();
+          return;
+        }
         if (!googleAccessToken) {
           updateSyncStatus(state.google.connected ? "Reconnect Google to sync" : "Connect Google to sync");
           await connectGoogle();
@@ -1391,6 +1401,11 @@
       }
 
       async function drainPersistentSyncQueue() {
+        if (hasPairedWatchWorker()) {
+          cleanupPersistentSyncQueue();
+          render();
+          return;
+        }
         if (!googleAccessToken) {
           if (state.syncQueue.length) {
             updateSyncStatus(state.google.connected ? "Reconnect Google to sync" : "Connect Google to sync");
@@ -1481,11 +1496,11 @@
           if (!task || task.type !== "actual" || !task.blockId || seen.has(task.blockId)) return false;
           seen.add(task.blockId);
           const block = state.actual.find((item) => item.id === task.blockId);
-          return Boolean(block && block.syncStatus !== "synced");
+          return Boolean(block && block.syncStatus !== "synced" && !(block.workerPending && hasPairedWatchWorker()));
         });
         state.actual.forEach((block) => {
           if (!block.syncStatus) markBlockSync(block, block.googleEventId ? "synced" : "pending", "", false);
-          if (block.syncStatus !== "synced" && !seen.has(block.id)) {
+          if (block.syncStatus !== "synced" && !(block.workerPending && hasPairedWatchWorker()) && !seen.has(block.id)) {
             state.syncQueue.push({
               id: crypto.randomUUID(),
               type: "actual",
@@ -1579,6 +1594,17 @@
       async function refreshStatus() {
         if (refreshInFlight) return;
         if (await refreshFromWatchWorker()) return;
+        // A paired device has one authority for the live block. Falling back to
+        // the legacy Apps Script bootstrap here can resurrect an older Watch
+        // placeholder and overwrite a newer local switch.
+        if (hasPairedWatchWorker()) {
+          bootstrapReady = true;
+          els.serverStatus.textContent = "Watch reconnecting - local switch kept";
+          els.serverChip.textContent = "Offline";
+          els.serverChip.className = "status-chip warn";
+          render();
+          return;
+        }
         if (!googleAccessToken) {
           bootstrapReady = true;
           els.serverStatus.textContent = "Local capture ready";
@@ -1670,8 +1696,8 @@
         const closedBlocks = (result.closed || []).map((item) => item?.block).filter(Boolean);
         closedBlocks.forEach((serverBlock) => {
           const localBlock = state.actual.find((block) => block.id === serverBlock.id);
-          if (localBlock) Object.assign(localBlock, serverBlock, { syncStatus: "synced", syncError: "" });
-          else state.actual.push(serverBlock);
+          if (localBlock) Object.assign(localBlock, serverBlock, { syncStatus: "synced", syncError: "", workerPending: false });
+          else state.actual.push({ ...serverBlock, workerPending: false });
         });
         const closedIds = new Set(closedBlocks.map((block) => block.id));
         if (closedIds.size) state.syncQueue = state.syncQueue.filter((task) => !closedIds.has(task.blockId));
