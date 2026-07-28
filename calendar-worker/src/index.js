@@ -20,6 +20,8 @@ const LD8 = [
 ];
 const ACTIVE_PLACEHOLDER_MINUTES = 360;
 const MIN_BLOCK_MS = 60 * 1000;
+const PWA_ORIGIN = "https://saharatunsaeng-lang.github.io";
+const PAIRING_TTL_MS = 15 * 60 * 1000;
 
 export default {
   async fetch(request, env) {
@@ -33,6 +35,10 @@ export default {
     }
     if (request.method === "GET" && url.pathname === "/oauth/callback") {
       return credential.fetch(withInternalPath(request, "/oauth/callback"));
+    }
+    if (url.pathname.startsWith("/app/")) {
+      if (request.method === "OPTIONS") return appCors(new Response(null, { status: 204 }));
+      return appCors(await credential.fetch(withInternalPath(request, url.pathname)));
     }
     if (!url.pathname.startsWith("/v1/")) return json({ error: "Not found" }, 404);
     if (!isAuthorized(request, env)) return json({ error: "Unauthorized" }, 401);
@@ -62,6 +68,9 @@ export class CalendarCredential {
     // can be typed straight into the action.
     if (url.pathname.startsWith("/v1/s/")) return this.startBlock(request, url.pathname.slice(6));
     if (request.method === "GET" && url.pathname === "/v1/running") return this.running();
+    if (request.method === "POST" && url.pathname === "/v1/create-pairing") return this.createPairing();
+    if (request.method === "POST" && url.pathname === "/app/pair") return this.pair(request);
+    if (request.method === "GET" && url.pathname === "/app/bootstrap") return this.appBootstrap(request);
     return json({ error: "Not found" }, 404);
   }
 
@@ -342,6 +351,52 @@ export class CalendarCredential {
     return json({ running: code, since: hhmm(startedAt), minutes, message: `${code} ${formatSpan(minutes)}` });
   }
 
+  async createPairing() {
+    const code = base64Url(crypto.getRandomValues(new Uint8Array(12)));
+    await this.state.storage.put(`pair:${code}`, { expiresAt: Date.now() + PAIRING_TTL_MS });
+    return json({ code, expiresAt: new Date(Date.now() + PAIRING_TTL_MS).toISOString() });
+  }
+
+  async pair(request) {
+    const body = await readJson(request);
+    const code = typeof body.code === "string" ? body.code : "";
+    const record = await this.state.storage.get(`pair:${code}`);
+    await this.state.storage.delete(`pair:${code}`);
+    if (!record || record.expiresAt < Date.now()) return json({ error: "Pairing code expired" }, 401);
+    const token = base64Url(crypto.getRandomValues(new Uint8Array(32)));
+    await this.state.storage.put(`pwa:${await sha256Base64Url(token)}`, { createdAt: Date.now() });
+    return json({ token });
+  }
+
+  async appBootstrap(request) {
+    if (!(await this.validPwaToken(request))) return json({ error: "Pair this device first" }, 401);
+    const calendar = await this.actualCalendar();
+    if (!calendar) return json({ error: `Calendar not found: ${ACTUAL_CALENDARS[0]}` }, 404);
+    const today = new Date().toISOString().slice(0, 10);
+    const actualEvents = await this.listEvents(calendar.id, addDays(today, -14), addDays(today, 7));
+    const activeEvent = await this.findActiveEvent(calendar.id, new Date());
+    const planMap = await this.planCalendarMap();
+    const planEvents = [];
+    for (const domain of LD8) {
+      const plan = planMap.get(domain.code);
+      if (!plan) continue;
+      const events = await this.listEvents(plan.id, today, addDays(today, 7));
+      planEvents.push(...events.map((event) => appPlanEvent(event, domain.id)).filter(Boolean));
+    }
+    return json({
+      actual: actualEvents.filter((event) => privateProps(event).status !== "active").map(appActualEvent).filter(Boolean),
+      active: activeEvent ? appActiveEvent(activeEvent) : null,
+      plan: planEvents.sort((a, b) => new Date(a.start) - new Date(b.start)),
+      syncedAt: new Date().toISOString(),
+    });
+  }
+
+  async validPwaToken(request) {
+    const value = request.headers.get("authorization") || "";
+    if (!value.startsWith("Bearer ")) return false;
+    return Boolean(await this.state.storage.get(`pwa:${await sha256Base64Url(value.slice(7))}`));
+  }
+
   async findActiveEvents(calendarId, now) {
     // The placeholder can have been opened well before today, so look back a little.
     const from = new Date(now.getTime() - 3 * 86_400_000).toISOString().slice(0, 10);
@@ -570,6 +625,55 @@ function copyPayload(event) {
 
 function publicEvent(event) {
   return { summary: event.summary || "(untitled)", start: event.start, end: event.end, allDay: Boolean(event.start?.date) };
+}
+
+function appActualEvent(event) {
+  if (!event?.start?.dateTime || !event?.end?.dateTime) return null;
+  const props = privateProps(event);
+  return {
+    id: props.blockId || `gcal-actual-${event.id}`,
+    categoryId: props.ld8 || resolveDomain(event.summary || "")?.id || "mm",
+    note: event.description || "",
+    start: event.start.dateTime,
+    end: event.end.dateTime,
+    googleEventId: event.id,
+    source: "timeblock-reality",
+    syncStatus: "synced",
+  };
+}
+
+function appActiveEvent(event) {
+  const props = privateProps(event);
+  return {
+    id: props.blockId || `gcal-active-${event.id}`,
+    categoryId: props.ld8 || resolveDomain(event.summary || "")?.id || "mm",
+    note: event.description || "",
+    start: event.start.dateTime,
+    googleEventId: event.id,
+    status: "active",
+  };
+}
+
+function appPlanEvent(event, categoryId) {
+  if (!event?.start?.dateTime || !event?.end?.dateTime) return null;
+  return {
+    id: `gcal-plan-${categoryId}-${event.id}`,
+    categoryId,
+    note: event.summary || "",
+    start: event.start.dateTime,
+    end: event.end.dateTime,
+    source: "gcal-plan",
+    googleEventId: event.id,
+  };
+}
+
+function appCors(response) {
+  const headers = new Headers(response.headers);
+  headers.set("access-control-allow-origin", PWA_ORIGIN);
+  headers.set("access-control-allow-headers", "authorization, content-type");
+  headers.set("access-control-allow-methods", "GET, POST, OPTIONS");
+  headers.set("vary", "Origin");
+  return new Response(response.body, { status: response.status, headers });
 }
 
 function randomId() {

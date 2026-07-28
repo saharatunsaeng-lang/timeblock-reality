@@ -873,6 +873,13 @@
           <div class="settings-list">
             <div class="setting-row">
               <div>
+                <span class="label">Watch sync</span>
+                <strong id="watchSyncStatus">Not paired</strong>
+              </div>
+              <button id="pairWatchButton" class="secondary-button" type="button">Pair once</button>
+            </div>
+            <div class="setting-row">
+              <div>
                 <span class="label">Google Calendar</span>
                 <strong id="googleStatus">Not connected</strong>
               </div>
@@ -1001,6 +1008,8 @@
       const dayGridDetailMinHeight = 46;
       const pushServiceUrl = String(window.TIMEBLOCK_PUSH_CONFIG?.endpoint || "").replace(/\/$/, "");
       const pushInstallationKey = `${storageKey}-push-installation`;
+      const workerDeviceTokenKey = `${storageKey}-worker-device-token`;
+      const calendarWorkerUrl = window.TIMEBLOCK_WORKER_CONFIG?.endpoint || "";
       const state = loadState();
       let tokenClient = null;
       let googleAccessToken = "";
@@ -1072,6 +1081,8 @@
         serverStatus: document.querySelector("#serverStatus"),
         serverChip: document.querySelector("#serverChip"),
         googleStatus: document.querySelector("#googleStatus"),
+        watchSyncStatus: document.querySelector("#watchSyncStatus"),
+        pairWatchButton: document.querySelector("#pairWatchButton"),
         connectGoogleButton: document.querySelector("#connectGoogleButton"),
         planCalendarStatus: document.querySelector("#planCalendarStatus"),
         actualCalendarStatus: document.querySelector("#actualCalendarStatus"),
@@ -1127,6 +1138,7 @@
         els.fixSheetScrim.addEventListener("click", closeFixSheet);
         els.fixLastForm.addEventListener("submit", fixLastBlock);
         els.syncPlanButton.addEventListener("click", syncPlan);
+        els.pairWatchButton.addEventListener("click", pairWatchOnce);
         els.syncReviewButton.addEventListener("click", syncPlan);
         els.syncSetupPlanButton.addEventListener("click", syncPlan);
         els.copyMemoryButton.addEventListener("click", copyWeeklyMemory);
@@ -1547,6 +1559,7 @@
 
       async function refreshStatus() {
         if (refreshInFlight) return;
+        if (await refreshFromWatchWorker()) return;
         if (!googleAccessToken) {
           bootstrapReady = true;
           els.serverStatus.textContent = "Local capture ready";
@@ -1576,6 +1589,64 @@
         } finally {
           refreshInFlight = false;
           render();
+        }
+      }
+
+      function workerDeviceToken() {
+        return localStorage.getItem(workerDeviceTokenKey) || "";
+      }
+
+      async function refreshFromWatchWorker() {
+        const token = workerDeviceToken();
+        if (!calendarWorkerUrl || !token) {
+          els.watchSyncStatus.textContent = "Not paired";
+          els.pairWatchButton.textContent = "Pair once";
+          return false;
+        }
+        try {
+          const response = await fetch(`${calendarWorkerUrl}/app/bootstrap`, {
+            headers: { Authorization: `Bearer ${token}` },
+            cache: "no-store",
+          });
+          if (response.status === 401) {
+            localStorage.removeItem(workerDeviceTokenKey);
+            els.watchSyncStatus.textContent = "Pair again";
+            els.pairWatchButton.textContent = "Pair once";
+            return false;
+          }
+          if (!response.ok) throw new Error(`Watch sync failed: ${response.status}`);
+          applyBootstrapState(await response.json());
+          bootstrapReady = true;
+          els.watchSyncStatus.textContent = "Connected";
+          els.pairWatchButton.textContent = "Paired";
+          els.serverStatus.textContent = "Updated from Watch";
+          applyIdleSyncChip();
+          return true;
+        } catch (error) {
+          els.watchSyncStatus.textContent = "Reconnect later";
+          return false;
+        }
+      }
+
+      async function pairWatchOnce() {
+        if (!calendarWorkerUrl) return;
+        const code = window.prompt("Enter the one-time pairing code from Hermes");
+        if (!code) return;
+        els.pairWatchButton.disabled = true;
+        try {
+          const response = await fetch(`${calendarWorkerUrl}/app/pair`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ code: code.trim() }),
+          });
+          const result = await response.json();
+          if (!response.ok || !result.token) throw new Error(result.error || "Pairing failed");
+          localStorage.setItem(workerDeviceTokenKey, result.token);
+          await refreshStatus();
+        } catch (error) {
+          els.watchSyncStatus.textContent = readableError(error);
+        } finally {
+          els.pairWatchButton.disabled = false;
         }
       }
 
