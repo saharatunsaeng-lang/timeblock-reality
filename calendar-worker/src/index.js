@@ -1,7 +1,12 @@
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const CALENDAR_API = "https://www.googleapis.com/calendar/v3";
+const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
 const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar";
+const SHEETS_READONLY_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly";
+// Re-consent always requests both scopes so existing Calendar functions keep
+// working while Hermes gains an explicitly read-only Sheets capability.
+const GOOGLE_SCOPES = `${CALENDAR_SCOPE} ${SHEETS_READONLY_SCOPE}`;
 const PLAN_CALENDARS = ["1 BD", "2 SP", "3 MM", "4 RS", "5 CM", "6 FN", "7 CT", "8 LS"];
 const ACTUAL_CALENDARS = ["Actual-Time Log", "Actual - Time Log"];
 const STATE_TTL_MS = 10 * 60 * 1000;
@@ -59,8 +64,16 @@ export class CalendarCredential {
     if (request.method === "GET" && url.pathname === "/v1/status") return this.status();
     if (request.method === "GET" && url.pathname === "/v1/calendars") return this.calendars();
     if (request.method === "GET" && url.pathname === "/v1/events") return this.events(url);
+    const sheet = sheetRoute(url.pathname);
+    if (request.method === "GET" && sheet?.kind === "metadata") return this.sheetMetadata(sheet.spreadsheetId);
+    if (request.method === "GET" && sheet?.kind === "values") return this.sheetValues(sheet.spreadsheetId, url);
     if (request.method === "POST" && url.pathname === "/v1/preview-copy") return this.previewCopy(request);
     if (request.method === "POST" && url.pathname === "/v1/confirm-copy") return this.confirmCopy(request);
+    if (request.method === "POST" && url.pathname === "/v1/preview-create-plan") return this.previewCreatePlan(request);
+    if (request.method === "POST" && url.pathname === "/v1/confirm-create-plan") return this.confirmCreatePlan(request);
+    if (request.method === "POST" && url.pathname === "/v1/preview-update-plan") return this.previewUpdatePlan(request);
+    if (request.method === "POST" && url.pathname === "/v1/confirm-update-plan") return this.confirmUpdatePlan(request);
+    if (request.method === "GET" && url.pathname === "/v1/plan-create-status") return this.planCreateStatus(url);
     if (request.method === "POST" && url.pathname === "/v1/delete-exact-duplicate") return this.deleteExactDuplicate(request);
     if (request.method === "POST" && url.pathname === "/v1/start-block") return this.startBlock(request);
     // Shortcuts on watchOS is strict about URLs: a space needs encoding and a field
@@ -91,7 +104,7 @@ export class CalendarCredential {
       client_id: this.env.GOOGLE_CLIENT_ID,
       redirect_uri: `${origin}/oauth/callback`,
       response_type: "code",
-      scope: CALENDAR_SCOPE,
+      scope: GOOGLE_SCOPES,
       access_type: "offline",
       prompt: "consent",
       state,
@@ -138,6 +151,25 @@ export class CalendarCredential {
     const items = (data.items || []).map((item) => ({ id: item.id, summary: item.summary, accessRole: item.accessRole }));
     const plan = PLAN_CALENDARS.map((summary) => ({ summary, found: items.some((item) => item.summary === summary) }));
     return json({ calendars: items, plan, actual: items.find((item) => ["Actual-Time Log", "Actual - Time Log"].includes(item.summary)) || null });
+  }
+
+  async sheetMetadata(spreadsheetId) {
+    const fields = "spreadsheetId,properties(title),sheets(properties(sheetId,title,index,gridProperties(rowCount,columnCount)))";
+    return json(await this.sheets(`/${encodeURIComponent(spreadsheetId)}?${new URLSearchParams({ fields })}`));
+  }
+
+  async sheetValues(spreadsheetId, url) {
+    const range = url.searchParams.get("range") || "";
+    if (!range || range.length > 200 || /[\u0000-\u001f]/.test(range)) {
+      return json({ error: "Use a non-empty A1 range up to 200 characters." }, 400);
+    }
+    const params = new URLSearchParams({
+      majorDimension: "ROWS",
+      valueRenderOption: "UNFORMATTED_VALUE",
+      dateTimeRenderOption: "FORMATTED_STRING",
+    });
+    const data = await this.sheets(`/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?${params}`);
+    return json({ spreadsheetId, range: data.range || range, majorDimension: data.majorDimension || "ROWS", values: data.values || [] });
   }
 
   async events(url) {
@@ -216,6 +248,166 @@ export class CalendarCredential {
     return json({ ...result, source: record.preview.source, target: record.preview.target, confirmationId, maxEvents });
   }
 
+  async previewCreatePlan(request) {
+    const body = await readJson(request);
+    const calendarName = typeof body.calendar === "string" ? body.calendar : "";
+    const events = normalizePlanEvents(body.events);
+    if (!PLAN_CALENDARS.includes(calendarName) || !events) {
+      return json({ error: "Use a plan calendar and 1-25 timed events with summary, start.dateTime, and end.dateTime." }, 400);
+    }
+    const calendar = (await this.planCalendarMap()).get(calendarName);
+    if (!calendar) return json({ error: `Calendar not found: ${calendarName}` }, 404);
+    const preview = await this.buildCreatePlanPreview(calendarName, calendar.id, events);
+    const confirmationId = randomId();
+    const expiresAt = Date.now() + CONFIRMATION_TTL_MS;
+    await this.state.storage.put(`confirmation:${confirmationId}`, { kind: "create-plan", preview, expiresAt, consumed: false });
+    return json({ ...preview, confirmationId, confirmationExpiresAt: new Date(expiresAt).toISOString(), writeRequiresExplicitConfirmation: true });
+  }
+
+  async confirmCreatePlan(request) {
+    const body = await readJson(request);
+    const confirmationId = typeof body.confirmationId === "string" ? body.confirmationId : "";
+    if (!confirmationId) return json({ error: "confirmationId is required." }, 400);
+    const record = await this.state.storage.get(`confirmation:${confirmationId}`);
+    if (!record || record.expiresAt < Date.now()) return json({ error: "Confirmation expired. Create a fresh preview." }, 409);
+    if (record.consumed || record.preview.mode !== "create-plan") return json({ error: "Confirmation is not available for this Plan creation." }, 409);
+    if (record.preview.conflicts.length && body.allowConflicts !== true) {
+      return json({ error: "Plan conflicts exist. Confirm again with allowConflicts: true only after reviewing them.", conflicts: record.preview.conflicts }, 409);
+    }
+
+    const fresh = await this.buildCreatePlanPreview(record.preview.calendar, record.preview.calendarId, record.preview.events);
+    if (fresh.conflicts.length && body.allowConflicts !== true) {
+      return json({ error: "Plan changed after preview; a fresh conflict was found.", conflicts: fresh.conflicts }, 409);
+    }
+    record.consumed = true;
+    await this.state.storage.put(`confirmation:${confirmationId}`, record);
+    const pending = fresh.events.filter((event) => !event.duplicate);
+    await mapWithConcurrency(pending, 1, async (event) => {
+      await this.google(`/calendars/${encodeURIComponent(fresh.calendarId)}/events`, { method: "POST", body: JSON.stringify(copyPayload(event)) });
+    });
+    const verified = await this.listEvents(fresh.calendarId, fresh.start, fresh.end);
+    const verifiedKeys = new Set(verified.map(eventKey));
+    const missing = fresh.events.filter((event) => !verifiedKeys.has(eventKey(event))).map(publicEvent);
+    if (missing.length) throw new Error(`Plan creation verification failed: ${missing.length} event(s) missing.`);
+    return json({ mode: "executed", calendar: fresh.calendar, created: pending.length, skipped: fresh.events.length - pending.length, events: fresh.events.map(publicEvent), confirmationId });
+  }
+
+  // A create is a preview then a separate confirm, so the caller needs a way to ask
+  // what happened to a confirmation it is holding without attempting the write again.
+  async planCreateStatus(url) {
+    const confirmationId = url.searchParams.get("confirmationId") || "";
+    if (!confirmationId) return json({ error: "confirmationId is required." }, 400);
+    const record = await this.state.storage.get(`confirmation:${confirmationId}`);
+    if (!record || record.kind !== "create-plan") {
+      return json({ confirmationId, found: false, state: "unknown" }, 404);
+    }
+    const state = record.consumed ? "executed" : record.expiresAt < Date.now() ? "expired" : "awaiting-confirmation";
+    return json({
+      confirmationId,
+      found: true,
+      state,
+      calendar: record.preview.calendar,
+      events: record.preview.events?.length ?? 0,
+      conflicts: record.preview.conflicts?.length ?? 0,
+      expiresAt: new Date(record.expiresAt).toISOString(),
+    });
+  }
+
+  async previewCleanupBirthdays(request) {
+    const body = await readJson(request);
+    const calendarName = typeof body.calendar === "string" ? body.calendar : "";
+    const start = validDateKey(body.start);
+    const end = validDateKey(body.end);
+    if (!PLAN_CALENDARS.includes(calendarName) || !start || !end || start >= end) return json({ error: "Use a plan calendar and YYYY-MM-DD range." }, 400);
+    const calendar = (await this.planCalendarMap()).get(calendarName);
+    if (!calendar) return json({ error: `Calendar not found: ${calendarName}` }, 404);
+    const preview = await this.buildBirthdayCleanupPreview(calendarName, calendar.id, start, end);
+    const confirmationId = randomId();
+    const expiresAt = Date.now() + CONFIRMATION_TTL_MS;
+    await this.state.storage.put(`confirmation:${confirmationId}`, { kind: "cleanup-birthdays", preview, expiresAt, consumed: false });
+    return json({ ...preview, confirmationId, confirmationExpiresAt: new Date(expiresAt).toISOString(), writeRequiresExplicitConfirmation: true });
+  }
+
+  async confirmCleanupBirthdays(request) {
+    const body = await readJson(request);
+    const confirmationId = typeof body.confirmationId === "string" ? body.confirmationId : "";
+    const record = await this.state.storage.get(`confirmation:${confirmationId}`);
+    if (!record || record.expiresAt < Date.now() || record.consumed || record.kind !== "cleanup-birthdays") return json({ error: "Confirmation is unavailable. Create a fresh preview." }, 409);
+    const fresh = await this.buildBirthdayCleanupPreview(record.preview.calendar, record.preview.calendarId, record.preview.start, record.preview.end);
+    if (JSON.stringify(fresh.keys) !== JSON.stringify(record.preview.keys)) return json({ error: "Birthday set changed after preview. Create a fresh preview." }, 409);
+    record.consumed = true;
+    await this.state.storage.put(`confirmation:${confirmationId}`, record);
+    try {
+      await mapWithConcurrency(fresh.events, 1, (event) => this.google(`/calendars/${encodeURIComponent(fresh.calendarId)}/events/${encodeURIComponent(event.id)}`, { method: "DELETE" }));
+    } catch (error) {
+      return json({ error: `Birthday cleanup failed before completion: ${error instanceof Error ? error.message : String(error)}` }, 502);
+    }
+    const verified = await this.buildBirthdayCleanupPreview(fresh.calendar, fresh.calendarId, fresh.start, fresh.end);
+    if (verified.events.length) throw new Error(`Birthday cleanup verification failed: ${verified.events.length} event(s) remain.`);
+    return json({ mode: "executed", calendar: fresh.calendar, deleted: fresh.events.length, start: fresh.start, end: fresh.end, confirmationId });
+  }
+
+  async buildBirthdayCleanupPreview(calendar, calendarId, start, end) {
+    const events = (await this.listEvents(calendarId, start, end)).filter((event) => Boolean(event.start?.date && event.end?.date) && /\bbirthday\b/i.test(event.summary || ""));
+    return { mode: "cleanup-birthdays", calendar, calendarId, start, end, events, keys: events.map(eventKey), count: events.length };
+  }
+
+  async previewUpdatePlan(request) {
+    const body = await readJson(request);
+    const update = normalizePlanUpdate(body);
+    if (!update) return json({ error: "Use a plan calendar plus exact current summary/start/end and replacement start/end in Asia/Bangkok." }, 400);
+    const calendar = (await this.planCalendarMap()).get(update.calendar);
+    if (!calendar) return json({ error: `Calendar not found: ${update.calendar}` }, 404);
+    const preview = await this.buildUpdatePlanPreview(update, calendar.id);
+    const confirmationId = randomId();
+    const expiresAt = Date.now() + CONFIRMATION_TTL_MS;
+    await this.state.storage.put(`confirmation:${confirmationId}`, { kind: "update-plan", preview, expiresAt, consumed: false });
+    return json({ ...preview, confirmationId, confirmationExpiresAt: new Date(expiresAt).toISOString(), writeRequiresExplicitConfirmation: true });
+  }
+
+  async confirmUpdatePlan(request) {
+    const body = await readJson(request);
+    const confirmationId = typeof body.confirmationId === "string" ? body.confirmationId : "";
+    if (!confirmationId) return json({ error: "confirmationId is required." }, 400);
+    const record = await this.state.storage.get(`confirmation:${confirmationId}`);
+    if (!record || record.expiresAt < Date.now()) return json({ error: "Confirmation expired. Create a fresh preview." }, 409);
+    if (record.consumed || record.kind !== "update-plan") return json({ error: "Confirmation is not available for this Plan update." }, 409);
+    const fresh = await this.buildUpdatePlanPreview(record.preview.update, record.preview.calendarId);
+    if (fresh.conflicts.length && body.allowConflicts !== true) return json({ error: "Plan conflicts exist. Confirm again with allowConflicts: true only after reviewing them.", conflicts: fresh.conflicts }, 409);
+    record.consumed = true;
+    await this.state.storage.put(`confirmation:${confirmationId}`, record);
+    const path = `/calendars/${encodeURIComponent(fresh.calendarId)}/events/${encodeURIComponent(fresh.current.id)}`;
+    const changed = await this.google(path, { method: "PATCH", body: JSON.stringify({ start: fresh.replacement.start, end: fresh.replacement.end }) });
+    if (eventKey(changed) !== eventKey(fresh.replacement)) throw new Error("Plan update verification failed: Google returned a different event time.");
+    const readBack = await this.google(path);
+    if (eventKey(readBack) !== eventKey(fresh.replacement)) throw new Error("Plan update read-back verification failed.");
+    return json({ mode: "executed", calendar: fresh.calendar, previous: publicEvent(fresh.current), updated: publicEvent(readBack), confirmationId });
+  }
+
+  async buildUpdatePlanPreview(update, calendarId) {
+    const start = eventRangeStart([update.current, update.replacement]);
+    const end = eventRangeEnd([update.current, update.replacement]);
+    const events = await this.listEvents(calendarId, start, end);
+    const matches = events.filter((event) => eventKey(event) === eventKey(update.current));
+    if (matches.length !== 1) throw new Error(`Plan update requires exactly one matching event; found ${matches.length}.`);
+    const current = matches[0];
+    const conflicts = events.filter((event) => event.id !== current.id && overlaps(update.replacement, event)).map(publicEvent);
+    return { mode: "update-plan", calendar: update.calendar, calendarId, update, current, replacement: update.replacement, conflicts };
+  }
+
+  async buildCreatePlanPreview(calendarName, calendarId, events) {
+    const start = eventRangeStart(events);
+    const end = eventRangeEnd(events);
+    const current = await this.listEvents(calendarId, start, end);
+    const keys = new Set(current.map(eventKey));
+    const conflicts = [];
+    for (const event of events) {
+      const overlapsWith = current.filter((currentEvent) => overlaps(event, currentEvent) && eventKey(event) !== eventKey(currentEvent));
+      if (overlapsWith.length) conflicts.push({ calendar: calendarName, event: publicEvent(event), overlaps: overlapsWith.map(publicEvent) });
+    }
+    return { mode: "create-plan", calendar: calendarName, calendarId, start, end, events, ready: events.filter((event) => !keys.has(eventKey(event))).length, duplicates: events.filter((event) => keys.has(eventKey(event))).length, conflicts };
+  }
+
   async buildCopyPreview(source, target) {
     const calendars = await this.planCalendarMap();
     const shiftMs = dateAtBangkok(target).getTime() - dateAtBangkok(source).getTime();
@@ -231,7 +423,10 @@ export class CalendarCredential {
         plans.push({ calendar: name, found: false, source: 0, ready: 0, duplicates: 0, events: [] });
         continue;
       }
-      const sourceEvents = await this.listEvents(calendar.id, source, addDays(source, 7));
+      // LD8 Plan is capacity expressed as timed blocks. All-day items (birthdays,
+      // holidays, imported reminders) are context only and must never be carried
+      // into a domain calendar or included in its time estimate.
+      const sourceEvents = (await this.listEvents(calendar.id, source, addDays(source, 7))).filter((event) => Boolean(event.start?.dateTime && event.end?.dateTime));
       const targetEvents = await this.listEvents(calendar.id, target, addDays(target, 7));
       const targetKeys = new Set(targetEvents.map(eventKey));
       const events = [];
@@ -490,6 +685,14 @@ export class CalendarCredential {
     return data;
   }
 
+  async sheets(path) {
+    const token = await this.accessToken();
+    const response = await fetch(`${SHEETS_API}${path}`, { headers: { authorization: `Bearer ${token}` } });
+    const data = await response.json();
+    if (!response.ok) throw new Error(`Google Sheets API ${response.status}: ${data?.error?.message || "request failed"}`);
+    return data;
+  }
+
   async accessToken() {
     const token = await this.loadToken();
     if (!token?.refresh_token) throw new Error("Google Calendar is not connected. Open /oauth/start first.");
@@ -530,6 +733,11 @@ function withInternalPath(request, pathname) {
 function isAuthorized(request, env) {
   const value = request.headers.get("authorization") || "";
   return timingSafeEqual(value, `Bearer ${env.HERMES_API_TOKEN}`);
+}
+
+function sheetRoute(pathname) {
+  const match = /^\/v1\/sheets\/([A-Za-z0-9_-]{20,200})\/(metadata|values)$/.exec(pathname);
+  return match ? { spreadsheetId: match[1], kind: match[2] } : null;
 }
 
 function timingSafeEqual(a, b) {
@@ -587,6 +795,54 @@ function addDays(key, days) {
   const date = new Date(`${key}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+function normalizePlanEvents(value) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 25) return null;
+  const events = [];
+  const keys = new Set();
+  for (const item of value) {
+    const summary = typeof item?.summary === "string" ? item.summary.trim() : "";
+    const startText = typeof item?.start?.dateTime === "string" ? item.start.dateTime : "";
+    const endText = typeof item?.end?.dateTime === "string" ? item.end.dateTime : "";
+    const start = new Date(startText);
+    const end = new Date(endText);
+    if (!summary || summary.length > 500 || !isBangkokDateTime(startText, start) || !isBangkokDateTime(endText, end) || end <= start) return null;
+    const event = { summary, start: { dateTime: startText, timeZone: "Asia/Bangkok" }, end: { dateTime: endText, timeZone: "Asia/Bangkok" } };
+    const key = eventKey(event);
+    if (keys.has(key)) return null;
+    keys.add(key);
+    events.push(event);
+  }
+  return events;
+}
+
+function normalizePlanUpdate(value) {
+  const calendar = typeof value?.calendar === "string" ? value.calendar : "";
+  const summary = typeof value?.summary === "string" ? value.summary.trim() : "";
+  const currentStart = typeof value?.currentStart === "string" ? value.currentStart : "";
+  const currentEnd = typeof value?.currentEnd === "string" ? value.currentEnd : "";
+  const replacementStart = typeof value?.replacementStart === "string" ? value.replacementStart : "";
+  const replacementEnd = typeof value?.replacementEnd === "string" ? value.replacementEnd : "";
+  const times = [currentStart, currentEnd, replacementStart, replacementEnd];
+  if (!PLAN_CALENDARS.includes(calendar) || !summary || summary.length > 500 || !times.every((time) => isBangkokDateTime(time, new Date(time)))) return null;
+  const current = { summary, start: { dateTime: currentStart, timeZone: "Asia/Bangkok" }, end: { dateTime: currentEnd, timeZone: "Asia/Bangkok" } };
+  const replacement = { summary, start: { dateTime: replacementStart, timeZone: "Asia/Bangkok" }, end: { dateTime: replacementEnd, timeZone: "Asia/Bangkok" } };
+  if (new Date(currentEnd) <= new Date(currentStart) || new Date(replacementEnd) <= new Date(replacementStart) || eventKey(current) === eventKey(replacement)) return null;
+  return { calendar, current, replacement };
+}
+
+function isBangkokDateTime(value, parsed) {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?\+07:00$/.test(value) && Number.isFinite(parsed.getTime());
+}
+
+function eventRangeStart(events) {
+  return events.map((event) => event.start.dateTime.slice(0, 10)).sort()[0];
+}
+
+function eventRangeEnd(events) {
+  const last = events.map((event) => event.end.dateTime.slice(0, 10)).sort().at(-1);
+  return addDays(last, 1);
 }
 
 function shiftEvent(event, shiftMs) {

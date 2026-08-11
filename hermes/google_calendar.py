@@ -57,7 +57,12 @@ def call(path: str, method: str = "GET", payload: dict | None = None) -> dict:
         endpoint() + path,
         data=data,
         method=method,
-        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+        headers={
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+            # Cloudflare may reject Python's default user-agent before the Worker runs.
+            "User-Agent": "curl/8.0 HermesCalendarConnector/1.0",
+        },
     )
     try:
         with urlopen(request, timeout=30) as response:
@@ -92,7 +97,13 @@ def main() -> None:
     config = commands.add_parser("configure")
     config.add_argument("--endpoint", required=True)
     commands.add_parser("status")
+    commands.add_parser("create-pairing")
     commands.add_parser("calendars")
+    sheet_metadata = commands.add_parser("sheet-metadata")
+    sheet_metadata.add_argument("--spreadsheet-id", required=True)
+    sheet_values = commands.add_parser("sheet-values")
+    sheet_values.add_argument("--spreadsheet-id", required=True)
+    sheet_values.add_argument("--range", required=True)
     events = commands.add_parser("events")
     events.add_argument("--start", required=True)
     events.add_argument("--end", required=True)
@@ -103,22 +114,86 @@ def main() -> None:
     confirm = commands.add_parser("confirm-copy")
     confirm.add_argument("--confirmation-id", required=True)
     confirm.add_argument("--allow-conflicts", action="store_true")
+    confirm.add_argument("--max-events", type=int)
+    preview_update_plan = commands.add_parser("preview-update-plan")
+    preview_update_plan.add_argument("--calendar", required=True)
+    preview_update_plan.add_argument("--summary", required=True)
+    preview_update_plan.add_argument("--current-start", required=True)
+    preview_update_plan.add_argument("--current-end", required=True)
+    preview_update_plan.add_argument("--replacement-start", required=True)
+    preview_update_plan.add_argument("--replacement-end", required=True)
+    confirm_update_plan = commands.add_parser("confirm-update-plan")
+    confirm_update_plan.add_argument("--confirmation-id", required=True)
+    confirm_update_plan.add_argument("--allow-conflicts", action="store_true")
+    preview_create_plan = commands.add_parser("preview-create-plan")
+    preview_create_plan.add_argument("--calendar", required=True)
+    preview_create_plan.add_argument("--events-json", required=True, help="JSON array of timed Calendar event objects")
+    confirm_create_plan = commands.add_parser("confirm-create-plan")
+    confirm_create_plan.add_argument("--confirmation-id", required=True)
+    confirm_create_plan.add_argument("--allow-conflicts", action="store_true")
+    plan_create_status = commands.add_parser("plan-create-status")
+    plan_create_status.add_argument("--confirmation-id", required=True)
+    delete_duplicate = commands.add_parser("delete-exact-duplicate")
+    delete_duplicate.add_argument("--calendar", required=True)
+    delete_duplicate.add_argument("--start", required=True)
+    delete_duplicate.add_argument("--end", required=True)
+    delete_duplicate.add_argument("--summary", required=True)
+    delete_duplicate.add_argument("--start-time", required=True)
+    delete_duplicate.add_argument("--end-time", required=True)
     args = parser.parse_args()
 
     if args.command == "configure":
         configure(args)
     elif args.command == "status":
         print_json(call("/v1/status"))
+    elif args.command == "create-pairing":
+        print_json(call("/v1/create-pairing", "POST"))
     elif args.command == "calendars":
         print_json(call("/v1/calendars"))
+    elif args.command == "sheet-metadata":
+        print_json(call("/v1/sheets/" + args.spreadsheet_id + "/metadata"))
+    elif args.command == "sheet-values":
+        from urllib.parse import urlencode
+        print_json(call("/v1/sheets/" + args.spreadsheet_id + "/values?" + urlencode({"range": args.range})))
     elif args.command == "events":
         from urllib.parse import urlencode
         query = urlencode([("start", args.start), ("end", args.end), *[("calendar", name) for name in args.calendar]])
         print_json(call("/v1/events?" + query))
     elif args.command == "preview-copy":
         print_json(call("/v1/preview-copy", "POST", {"source": args.source, "target": args.target}))
+    elif args.command == "preview-update-plan":
+        print_json(call("/v1/preview-update-plan", "POST", {
+            "calendar": args.calendar,
+            "summary": args.summary,
+            "currentStart": args.current_start,
+            "currentEnd": args.current_end,
+            "replacementStart": args.replacement_start,
+            "replacementEnd": args.replacement_end,
+        }))
+    elif args.command == "confirm-update-plan":
+        print_json(call("/v1/confirm-update-plan", "POST", {"confirmationId": args.confirmation_id, "allowConflicts": args.allow_conflicts}))
+    elif args.command == "preview-create-plan":
+        try:
+            events = json.loads(args.events_json)
+        except json.JSONDecodeError as error:
+            raise RuntimeError("events-json ต้องเป็น JSON array ที่ถูกต้อง") from error
+        print_json(call("/v1/preview-create-plan", "POST", {"calendar": args.calendar, "events": events}))
+    elif args.command == "confirm-create-plan":
+        print_json(call("/v1/confirm-create-plan", "POST", {"confirmationId": args.confirmation_id, "allowConflicts": args.allow_conflicts}))
+    elif args.command == "plan-create-status":
+        from urllib.parse import urlencode
+        print_json(call("/v1/plan-create-status?" + urlencode({"confirmationId": args.confirmation_id})))
+    elif args.command == "delete-exact-duplicate":
+        event = {
+            "summary": args.summary,
+            "start": {"dateTime": args.start_time, "timeZone": "Asia/Bangkok"},
+            "end": {"dateTime": args.end_time, "timeZone": "Asia/Bangkok"},
+        }
+        print_json(call("/v1/delete-exact-duplicate", "POST", {"calendar": args.calendar, "start": args.start, "end": args.end, "event": event}))
     else:
         payload = {"confirmationId": args.confirmation_id, "allowConflicts": args.allow_conflicts}
+        if args.max_events is not None:
+            payload["maxEvents"] = args.max_events
         print_json(call("/v1/confirm-copy", "POST", payload))
 
 
