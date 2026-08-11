@@ -1,6 +1,6 @@
 # TimeBlock Reality - Agent Handoff
 
-Date: 2026-07-25
+Date: 2026-08-11
 Repo: `saharatunsaeng-lang/timeblock-reality`
 Local path: `/Users/saharatunsaeng/Developer/timeblock-reality`
 Branch: `main`
@@ -43,14 +43,30 @@ Start/Switch/End, and never reintroduce "wait for GCal" blocking on capture.
   domain, a typed URL and one header, nothing else - duplicate the first shortcut to
   avoid retyping the token.
 
-- **Only one block runs at a time**, and two writers can each open a placeholder
-  before either sees the other. Bootstrap settles it: same domain means nobody
-  switched, so the earliest start wins and the rest are deleted; different domains
-  mean a real switch, so the newest wins and the older ones close where it began.
-  Starting from the worker closes every placeholder it finds. Do not remove this -
-  it is what stops the wrist and the phone from duplicating each other.
+- **Pairing / single authority** (`/app/*`, added 2026-07-28): the PWA pairs to the
+  worker once with a one-time code from `POST /v1/create-pairing`, exchanges it at
+  `POST /app/pair` for a device token, and from then on switches through
+  `POST /app/start-block` and reads `GET /app/bootstrap`. These routes are gated by
+  that device token, not `HERMES_API_TOKEN`, and are the only ones with CORS. The
+  point is that the worker owns the running block, so the phone and the Watch stop
+  being two independent writers.
+- **Only one block runs at a time.** Even with one authority, two writers can each
+  open a placeholder before either sees the other. Bootstrap settles it: same domain
+  means nobody switched, so the earliest start wins and the rest are deleted;
+  different domains mean a real switch, so the newest wins and the older ones close
+  where it began. Starting from the worker closes every placeholder it finds. Do not
+  remove this - it is what stops the wrist and the phone duplicating each other.
+- **Plan writes and Sheets reads** on the calendar worker are preview-then-confirm:
+  `preview-create-plan` / `confirm-create-plan`, `preview-update-plan` /
+  `confirm-update-plan`, `preview-copy` / `confirm-copy`, plus birthday cleanup and
+  `delete-exact-duplicate`. A preview stores a confirmation that expires and can be
+  used once; `GET /v1/plan-create-status?confirmationId=` says whether one is
+  awaiting, executed or expired. `GET /v1/sheet-metadata|sheet-values` are read-only.
+  The OAuth scope now asks for Calendar **and** read-only Sheets, so a scope change
+  needs one re-consent through `/oauth/start` or Sheets calls fail.
 - **`hermes/google_calendar.py`**: connector used by scripts (e.g. the quality gate)
-  to read `Actual-Time Log` without a browser.
+  to read `Actual-Time Log` without a browser, and the CLI for every worker route
+  above.
 - **`scripts/audit_actual_time_log.py`**: read-only quality gate. Capacity learning
   may only start when it reports `learningReady: true`.
 
@@ -71,7 +87,26 @@ gh auth switch --user saharatunsaeng-lang   # if it does not
 Whenever `index.html` or `sw.js` changes, bump the cache version in `sw.js`,
 `manifest.webmanifest`, and the two `?v=` query strings in `index.html`, or the
 service worker keeps serving the old bundle to returning users. This is easy to
-forget and it silently hides the change - it was hit during the 2026-07-25 session.
+forget and it silently hides the change - it was hit during the 2026-07-25 session,
+and a partial bump was still sitting in the repo three days later.
+
+**The two Cloudflare workers deploy separately from Pages** and nothing in git
+does it for you:
+
+```bash
+cd calendar-worker && npx wrangler deploy   # Watch path, pairing, plan + Sheets
+cd push-worker     && npx wrangler deploy   # 30-minute check-in notification copy
+```
+
+Production ran from an uncommitted working tree for several days because of this.
+If the worker behaves in a way the source cannot explain, suspect the reverse too.
+
+Before pushing, run the checks - they encode the mistakes this repo actually makes:
+
+```bash
+node scripts/check.mjs          # syntax, temporal dead zone, worker routing, build marker
+cd calendar-worker && npm test  # preview/confirm flows
+```
 
 Apps Script deploy (fallback runtime only):
 
@@ -148,6 +183,14 @@ There is no test suite - this is a static HTML/JS app. What works:
 - A known bad historical event exists in `Actual-Time Log` on 2026-07-04 (`7 CT`,
   event `mj8p4luu4iqkufgci1lvn3alp0@google.com`, `10:20-23:01` instead of
   `10:20-11:55`). Do not mutate it without explicit confirmation - it is user data.
+- Only `calendar-worker` has tests. The PWA - where every data-loss bug so far has
+  lived - has none, because its logic is welded into one 3,300-line inline script
+  with no seam to import. The reconciliation rules (`resolveSingleActiveEvent`,
+  `keptAfterServerSweep`, `clipBlocksToDay`, `finishActiveBlockLocally`) are pure
+  functions over plain objects and would be the place to start if that changes.
+- `design-directions.html` is an untracked mockup of three alternative visual
+  directions, none adopted - Saharat chose to keep the current design. Delete it or
+  commit it as a design record; it is not referenced by anything.
 
 ## Cautions
 
