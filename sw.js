@@ -2,7 +2,7 @@ const cacheName = "timeblock-reality-v32-single-authority";
 const assets = [
   "./?v=20260729-single-authority",
   "index.html?v=20260729-single-authority",
-  "manifest.webmanifest?v=20260726-one-active",
+  "manifest.webmanifest?v=20260729-single-authority",
   "push-config.js?v=20260729-single-authority",
   "icon.svg",
 ];
@@ -66,7 +66,7 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of clients) {
         if (client.url.startsWith(self.location.origin) && "focus" in client) return client.focus();
       }
-      return self.clients.openWindow("./?v=20260726-one-active");
+      return self.clients.openWindow("./?v=20260729-single-authority");
     }),
   );
 });
