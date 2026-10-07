@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260729-single-authority" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261007-switch-race" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -974,7 +974,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20260729-single-authority"></script>
+    <script src="push-config.js?v=20261007-switch-race"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -1032,6 +1032,10 @@
       // init() runs before the rest of this script is evaluated, so anything it
       // touches has to be declared up here or it dies in the temporal dead zone.
       let silentReconnectInFlight = false;
+      // Bumped on every local switch. A bootstrap that left before the tap carries
+      // the old running block, and applying it would undo the switch until the next
+      // 30 s poll - check-in notifications then follow the wrong domain.
+      let localActiveSeq = 0;
 
       const els = {
         viewEyebrow: document.querySelector("#viewEyebrow"),
@@ -1216,6 +1220,7 @@
           logAction(`start ${categoryShortLabel(categoryId)}`);
           // One timestamp makes a domain switch continuous: the old block ends exactly when the next starts.
           const transitionAt = new Date();
+          localActiveSeq += 1;
           const endedBlock = finishActiveBlockLocally(transitionAt);
           state.active = {
             id: crypto.randomUUID(),
@@ -1244,6 +1249,7 @@
 
       function finishActiveBlockLocally(endAt = new Date()) {
         if (!state.active) return null;
+        localActiveSeq += 1;
         const end = new Date(endAt);
         const start = new Date(state.active.start);
         const googleEventId = state.active.googleEventId || "";
@@ -1618,9 +1624,10 @@
         els.serverChip.textContent = "Checking";
         els.serverChip.className = "status-chip warn";
         render();
+        const seqAtRequest = localActiveSeq;
         try {
           const result = await runServer("getBootstrapState");
-          applyBootstrapState(result);
+          applyBootstrapState(result, seqAtRequest);
           bootstrapReady = true;
           els.serverStatus.textContent = "Ready";
           applyIdleSyncChip();
@@ -1719,6 +1726,10 @@
           els.pairWatchButton.textContent = "Pair once";
           return false;
         }
+        // Overlapping polls (open + resume + interval) used to race each other.
+        if (refreshInFlight) return true;
+        refreshInFlight = true;
+        const seqAtRequest = localActiveSeq;
         try {
           const response = await fetch(`${calendarWorkerUrl}/app/bootstrap`, {
             headers: { Authorization: `Bearer ${token}` },
@@ -1731,7 +1742,7 @@
             return false;
           }
           if (!response.ok) throw new Error(`Watch sync failed: ${response.status}`);
-          applyBootstrapState(await response.json());
+          applyBootstrapState(await response.json(), seqAtRequest);
           bootstrapReady = true;
           els.watchSyncStatus.textContent = "Connected";
           els.pairWatchButton.textContent = "Paired";
@@ -1741,6 +1752,8 @@
         } catch (error) {
           els.watchSyncStatus.textContent = "Reconnect later";
           return false;
+        } finally {
+          refreshInFlight = false;
         }
       }
 
@@ -1780,11 +1793,12 @@
         refreshStatus();
       }
 
-      function applyBootstrapState(result) {
+      function applyBootstrapState(result, seqAtRequest = localActiveSeq) {
         if (!result) return;
+        const switchedSinceRequest = seqAtRequest !== localActiveSeq;
         if (Array.isArray(result.plan)) state.plan = result.plan;
         if (Array.isArray(result.actual)) state.actual = mergeBlocks(state.actual, result.actual, result.range);
-        if ("active" in result && !pendingSyncCount && !localActionInFlight) {
+        if ("active" in result && !pendingSyncCount && !localActionInFlight && !switchedSinceRequest) {
           const incomingActive = resolveIncomingActive(result.active);
           // Both being absent is the normal idle case; `?.` made that compare equal
           // and then dereferenced null, throwing out of bootstrap before it saved.
