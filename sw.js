@@ -1,9 +1,9 @@
-const cacheName = "timeblock-reality-v33-switch-race";
+const cacheName = "timeblock-reality-v34-split-night";
 const assets = [
-  "./?v=20261007-switch-race",
-  "index.html?v=20261007-switch-race",
-  "manifest.webmanifest?v=20261007-switch-race",
-  "push-config.js?v=20261007-switch-race",
+  "./?v=20261007-split-night",
+  "index.html?v=20261007-split-night",
+  "manifest.webmanifest?v=20261007-split-night",
+  "push-config.js?v=20261007-split-night",
   "icon.svg",
 ];
 
@@ -66,7 +66,7 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of clients) {
         if (client.url.startsWith(self.location.origin) && "focus" in client) return client.focus();
       }
-      return self.clients.openWindow("./?v=20261007-switch-race");
+      return self.clients.openWindow("./?v=20261007-split-night");
     }),
   );
 });

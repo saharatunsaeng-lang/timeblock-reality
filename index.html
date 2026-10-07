@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261007-switch-race" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261007-split-night" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -625,6 +625,26 @@
         font-weight: 850;
       }
 
+      .split-box {
+        display: grid;
+        gap: 10px;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+      }
+
+      .split-box .secondary-button {
+        min-height: 48px;
+      }
+
+      .split-status {
+        color: var(--muted);
+        font-size: 0.78rem;
+      }
+
+      .split-status:empty {
+        display: none;
+      }
+
       .form-row {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -971,10 +991,25 @@
           <input id="manualNote" type="text" placeholder="optional" />
         </label>
         <button class="primary-button" type="submit">Save changes</button>
+        <div class="split-box">
+          <span class="label">Forgot to switch? Split this block</span>
+          <div class="form-row">
+            <label>
+              From
+              <input id="splitAt" type="time" />
+            </label>
+            <label>
+              Becomes
+              <select id="splitCategory"></select>
+            </label>
+          </div>
+          <button class="secondary-button" id="splitButton" type="button">Split here</button>
+          <span class="split-status" id="splitStatus"></span>
+        </div>
       </form>
     </section>
 
-    <script src="push-config.js?v=20261007-switch-race"></script>
+    <script src="push-config.js?v=20261007-split-night"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -1062,6 +1097,10 @@
         manualStart: document.querySelector("#manualStart"),
         manualEnd: document.querySelector("#manualEnd"),
         manualNote: document.querySelector("#manualNote"),
+        splitAt: document.querySelector("#splitAt"),
+        splitCategory: document.querySelector("#splitCategory"),
+        splitButton: document.querySelector("#splitButton"),
+        splitStatus: document.querySelector("#splitStatus"),
         todayLabel: document.querySelector("#todayLabel"),
         todaySummaryGrid: document.querySelector("#todaySummaryGrid"),
         todayInsight: document.querySelector("#todayInsight"),
@@ -1114,6 +1153,7 @@
         normalizeLoadedState();
         logAction("open app");
         fillSelect(els.manualCategory);
+        fillSelect(els.splitCategory);
         renderCaptureButtons(els.quickGrid);
         setDefaultTimes();
         bindEvents();
@@ -1146,6 +1186,7 @@
         els.closeFixSheetButton.addEventListener("click", closeFixSheet);
         els.fixSheetScrim.addEventListener("click", closeFixSheet);
         els.fixLastForm.addEventListener("submit", fixLastBlock);
+        els.splitButton.addEventListener("click", splitFixTargetBlock);
         els.syncPlanButton.addEventListener("click", syncPlan);
         els.pairWatchButton.addEventListener("click", pairWatchOnce);
         els.syncReviewButton.addEventListener("click", syncPlan);
@@ -1208,6 +1249,9 @@
           day: "numeric",
           month: "short",
         });
+        // Resume calls this too; an open edit sheet holds the block's own times,
+        // and resetting them to now would silently rewrite the block on save.
+        if (!els.fixSheet.hidden) return;
         els.manualStart.value = toTimeInput(roundDate(now, 15));
         els.manualEnd.value = toTimeInput(addMinutes(roundDate(now, 15), 30));
       }
@@ -1407,8 +1451,12 @@
       }
 
       async function drainPersistentSyncQueue() {
-        if (hasPairedWatchWorker()) {
+        // The worker owns the live block, but it has no endpoint for editing a
+        // finished one. Edits and splits used to stay on this phone forever, so
+        // they go straight to GCal whenever Google is connected.
+        if (hasPairedWatchWorker() && !googleAccessToken) {
           cleanupPersistentSyncQueue();
+          if (state.syncQueue.length) updateSyncStatus("Connect Google in More to save edits");
           render();
           return;
         }
@@ -1551,20 +1599,79 @@
         els.manualStart.value = toTimeInput(new Date(block.start));
         els.manualEnd.value = toTimeInput(new Date(block.end));
         els.manualNote.value = block.note || "";
+        // The usual miss is sleep: the evening block runs on until morning.
+        els.splitCategory.value = "bd";
+        els.splitAt.value = toTimeInput(addMinutes(new Date(block.start), Math.round((new Date(block.end) - new Date(block.start)) / 120000)));
+        els.splitStatus.textContent = "";
       }
 
       function fixLastBlock(event) {
         event.preventDefault();
         const block = state.actual.find((item) => item.id === fixTargetBlockId);
         if (!block) return;
-        const fixed = buildBlockFromForm(els.manualCategory.value, els.manualStart.value, els.manualEnd.value, els.manualNote.value, dateKey(block.start));
-        block.categoryId = fixed.categoryId;
-        block.note = fixed.note;
-        block.start = fixed.start;
-        block.end = fixed.end;
+        const range = resolveEditedRange(block, els.manualStart.value, els.manualEnd.value);
+        block.categoryId = els.manualCategory.value;
+        block.note = els.manualNote.value.trim();
+        block.start = range.start.toISOString();
+        block.end = range.end.toISOString();
+        block.updatedAt = new Date().toISOString();
         saveState();
         closeFixSheet();
         queueActualSync(block);
+        render();
+      }
+
+      // The sheet only shows times, so a block that crosses midnight needs its dates
+      // inferred: take the reading that moves the block least from where it was.
+      // Pulling a 07:00 block's start back to 22:30 then lands on the night before.
+      function resolveEditedRange(block, startTime, endTime) {
+        const oldStart = new Date(block.start);
+        const oldEnd = new Date(block.end);
+        let best = null;
+        for (const offset of [-1, 0, 1]) {
+          const start = fromDateAndTime(dateKey(addDays(oldStart, offset)), startTime);
+          let end = fromDateAndTime(dateKey(start), endTime);
+          if (end <= start) end = addDays(end, 1);
+          const drift = Math.abs(start - oldStart) + Math.abs(end - oldEnd);
+          if (!best || drift < best.drift) best = { start, end, drift };
+        }
+        return best;
+      }
+
+      function splitFixTargetBlock() {
+        const block = state.actual.find((item) => item.id === fixTargetBlockId);
+        if (!block || !els.splitAt.value) return;
+        const start = new Date(block.start);
+        const end = new Date(block.end);
+        // The block can span midnight, so the split time may fall on either day.
+        const splitAt = [0, 1]
+          .map((offset) => fromDateAndTime(dateKey(addDays(start, offset)), els.splitAt.value))
+          .find((date) => date - start >= 60 * 1000 && end - date >= 60 * 1000);
+        if (!splitAt) {
+          els.splitStatus.textContent = `Pick a time between ${formatTime(block.start)} and ${formatTime(block.end)}.`;
+          return;
+        }
+        const tail = {
+          id: crypto.randomUUID(),
+          categoryId: els.splitCategory.value,
+          note: "",
+          start: splitAt.toISOString(),
+          end: block.end,
+          googleEventId: "",
+          syncStatus: "pending",
+          syncError: "",
+          workerPending: false,
+          updatedAt: new Date().toISOString(),
+        };
+        block.end = splitAt.toISOString();
+        block.updatedAt = tail.updatedAt;
+        state.actual.push(tail);
+        state.actual.sort((a, b) => new Date(a.start) - new Date(b.start));
+        logAction(`split ${categoryShortLabel(block.categoryId)} at ${formatTime(tail.start)} -> ${categoryShortLabel(tail.categoryId)}`);
+        saveState();
+        closeFixSheet();
+        queueActualSync(block);
+        queueActualSync(tail);
         render();
       }
 
