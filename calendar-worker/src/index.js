@@ -87,6 +87,10 @@ export class CalendarCredential {
       if (!(await this.validPwaToken(request))) return json({ error: "Pair this device first" }, 401);
       return this.startBlock(request);
     }
+    if (request.method === "POST" && url.pathname === "/app/relabel-active") {
+      if (!(await this.validPwaToken(request))) return json({ error: "Pair this device first" }, 401);
+      return this.relabelActive(request);
+    }
     if (request.method === "GET" && url.pathname === "/app/bootstrap") return this.appBootstrap(request);
     return json({ error: "Not found" }, 404);
   }
@@ -536,6 +540,30 @@ export class CalendarCredential {
     });
 
     return json({ started: domain.code, at: hhmm(now), active: appActiveEvent(created), closed });
+  }
+
+  // A mistapped domain is corrected on the same block: start time and blockId
+  // stay, only the domain changes. Switching instead would record the wrong
+  // domain as a finished block.
+  async relabelActive(request) {
+    const body = (await readJson(request)) || {};
+    const domain = resolveDomain(String(body.domain || ""));
+    const blockId = typeof body.blockId === "string" ? body.blockId.trim() : "";
+    if (!domain || !blockId) return json({ error: "Use blockId and a known domain." }, 400);
+    const calendar = await this.actualCalendar();
+    if (!calendar) return json({ error: `Calendar not found: ${ACTUAL_CALENDARS[0]}` }, 404);
+    const target = (await this.findActiveEvents(calendar.id, new Date()))
+      .find((event) => privateProps(event).blockId === blockId);
+    // Already closed or replaced by a newer tap: nothing running to relabel.
+    if (!target) return json({ error: "That block is no longer running." }, 409);
+    const updated = await this.google(`/calendars/${encodeURIComponent(calendar.id)}/events/${encodeURIComponent(target.id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        summary: `Active: ${domain.code}`,
+        extendedProperties: { private: { ...privateProps(target), ld8: domain.id } },
+      }),
+    });
+    return json({ relabeled: domain.code, active: appActiveEvent(updated) });
   }
 
   async running() {

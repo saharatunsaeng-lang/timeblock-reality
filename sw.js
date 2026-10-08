@@ -1,9 +1,9 @@
-const cacheName = "timeblock-reality-v35-relabel-active";
+const cacheName = "timeblock-reality-v36-relabel-worker";
 const assets = [
-  "./?v=20261008-relabel-active",
-  "index.html?v=20261008-relabel-active",
-  "manifest.webmanifest?v=20261008-relabel-active",
-  "push-config.js?v=20261008-relabel-active",
+  "./?v=20261008-relabel-worker",
+  "index.html?v=20261008-relabel-worker",
+  "manifest.webmanifest?v=20261008-relabel-worker",
+  "push-config.js?v=20261008-relabel-worker",
   "icon.svg",
 ];
 
@@ -66,7 +66,7 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of clients) {
         if (client.url.startsWith(self.location.origin) && "focus" in client) return client.focus();
       }
-      return self.clients.openWindow("./?v=20261008-relabel-active");
+      return self.clients.openWindow("./?v=20261008-relabel-worker");
     }),
   );
 });
