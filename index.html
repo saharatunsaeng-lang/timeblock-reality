@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261007-split-night" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261008-relabel-active" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -625,6 +625,19 @@
         font-weight: 850;
       }
 
+      .relabel-button {
+        align-self: start;
+        min-height: 36px;
+        padding: 0 12px;
+        font-size: 0.78rem;
+      }
+
+      .relabel-hint {
+        margin: 10px 0 14px;
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
       .split-box {
         display: grid;
         gap: 10px;
@@ -799,6 +812,7 @@
             <span class="block-time" id="activeMeta"></span>
             <span class="status-chip warn checkin-signal" id="activeSignal" hidden>30m check-in</span>
           </div>
+          <button class="secondary-button relabel-button" id="relabelButton" type="button" hidden>Wrong domain?</button>
         </section>
 
         <div class="domain-grid" id="quickGrid"></div>
@@ -962,6 +976,18 @@
       <button class="nav-button" data-tab="more">More</button>
     </nav>
 
+    <div class="sheet-scrim" id="relabelSheetScrim" hidden></div>
+    <section class="sheet" id="relabelSheet" role="dialog" aria-modal="true" aria-labelledby="relabelSheetTitle" hidden>
+      <div class="sheet-head">
+        <div>
+          <span class="label">Change running domain</span>
+          <strong id="relabelSheetTitle">-</strong>
+        </div>
+        <button class="round-button" id="closeRelabelSheetButton" type="button" aria-label="Close">&#215;</button>
+      </div>
+      <p class="relabel-hint">Keeps the start time - only the domain changes.</p>
+      <div class="domain-grid" id="relabelGrid"></div>
+    </section>
     <div class="sheet-scrim" id="fixSheetScrim" hidden></div>
     <section class="sheet" id="fixSheet" role="dialog" aria-modal="true" aria-labelledby="fixSheetTitle" hidden>
       <div class="sheet-head">
@@ -1009,7 +1035,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20261007-split-night"></script>
+    <script src="push-config.js?v=20261008-relabel-active"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -1081,6 +1107,12 @@
         activeElapsed: document.querySelector("#activeElapsed"),
         activeMeta: document.querySelector("#activeMeta"),
         activeSignal: document.querySelector("#activeSignal"),
+        relabelButton: document.querySelector("#relabelButton"),
+        relabelSheet: document.querySelector("#relabelSheet"),
+        relabelSheetScrim: document.querySelector("#relabelSheetScrim"),
+        relabelSheetTitle: document.querySelector("#relabelSheetTitle"),
+        closeRelabelSheetButton: document.querySelector("#closeRelabelSheetButton"),
+        relabelGrid: document.querySelector("#relabelGrid"),
         quickGrid: document.querySelector("#quickGrid"),
         fixSheet: document.querySelector("#fixSheet"),
         fixSheetScrim: document.querySelector("#fixSheetScrim"),
@@ -1184,6 +1216,9 @@
         els.fixLastButton.addEventListener("click", () => openFixSheet());
         els.syncLastButton.addEventListener("click", retrySyncLastBlock);
         els.closeFixSheetButton.addEventListener("click", closeFixSheet);
+        els.relabelButton.addEventListener("click", openRelabelSheet);
+        els.closeRelabelSheetButton.addEventListener("click", closeRelabelSheet);
+        els.relabelSheetScrim.addEventListener("click", closeRelabelSheet);
         els.fixSheetScrim.addEventListener("click", closeFixSheet);
         els.fixLastForm.addEventListener("submit", fixLastBlock);
         els.splitButton.addEventListener("click", splitFixTargetBlock);
@@ -1897,6 +1932,7 @@
         silentReconnectGoogle();
         drainPersistentSyncQueue();
         ensureActiveBlockSynced();
+        flushActiveRelabel();
         refreshStatus();
       }
 
@@ -1909,6 +1945,10 @@
           const incomingActive = resolveIncomingActive(result.active);
           // Both being absent is the normal idle case; `?.` made that compare equal
           // and then dereferenced null, throwing out of bootstrap before it saved.
+          if (incomingActive && state.active?.relabelPending && incomingActive.id === state.active.id) {
+            incomingActive.categoryId = state.active.categoryId;
+            incomingActive.relabelPending = true;
+          }
           if (incomingActive && state.active && incomingActive.id === state.active.id && state.active.reminderSentAt) {
             incomingActive.reminderSentAt = state.active.reminderSentAt;
             incomingActive.reminderCount = getReminderCount(state.active);
@@ -2041,19 +2081,101 @@
           els.activeElapsed.hidden = true;
           els.activeElapsed.textContent = "";
           els.activeMeta.textContent = bootstrapReady ? "Tap a domain to start" : "Loading current state...";
+          els.relabelButton.hidden = true;
         } else {
+          els.relabelButton.hidden = false;
           els.activeTitle.textContent = categoryShortLabel(state.active.categoryId);
           els.runningLabel.hidden = false;
           els.activeElapsed.hidden = false;
           els.activeElapsed.textContent = formatElapsed(state.active.start, new Date());
           const syncText = pendingSyncCount ? " · syncing" : "";
-          els.activeMeta.textContent = `Started ${formatTime(state.active.start)}${syncText}`;
+          const relabelText = state.active.relabelPending ? " · domain not saved yet" : "";
+          els.activeMeta.textContent = `Started ${formatTime(state.active.start)}${syncText}${relabelText}`;
         }
         [...els.quickGrid.querySelectorAll("button")].forEach((button) => {
           const category = categories.find((item) => button.title === item.name);
           button.classList.toggle("active", state.active?.categoryId === category?.id);
           button.disabled = locked;
         });
+      }
+
+      function openRelabelSheet() {
+        if (!state.active) return;
+        els.relabelSheetTitle.textContent = `${categoryShortLabel(state.active.categoryId)} since ${formatTime(state.active.start)}`;
+        els.relabelGrid.innerHTML = "";
+        categories.forEach((category) => {
+          const button = document.createElement("button");
+          button.className = "domain-button";
+          button.type = "button";
+          button.textContent = category.code;
+          button.title = category.name;
+          button.classList.toggle("active", category.id === state.active.categoryId);
+          button.addEventListener("click", () => relabelActiveBlock(category.id));
+          els.relabelGrid.append(button);
+        });
+        els.relabelSheet.hidden = false;
+        els.relabelSheetScrim.hidden = false;
+        document.body.style.overflow = "hidden";
+      }
+
+      function closeRelabelSheet() {
+        els.relabelSheet.hidden = true;
+        els.relabelSheetScrim.hidden = true;
+        document.body.style.overflow = "";
+      }
+
+      // A mistap fixed in place: same block, same start, new domain. Switching
+      // instead would leave the wrong domain on record until it was edited later.
+      function relabelActiveBlock(categoryId) {
+        closeRelabelSheet();
+        if (!state.active || state.active.categoryId === categoryId) return;
+        logAction(`relabel ${categoryShortLabel(state.active.categoryId)} -> ${categoryShortLabel(categoryId)}`);
+        localActiveSeq += 1;
+        state.active.categoryId = categoryId;
+        state.active.relabelPending = true;
+        saveState();
+        syncHomeScreenBadge();
+        syncBackgroundPushState({ keepalive: true });
+        render();
+        flushActiveRelabel();
+      }
+
+      // Neither the Watch worker nor Apps Script can rename a running block, so the
+      // placeholder in GCal is patched directly. Until that lands, bootstrap keeps
+      // this device's domain rather than reverting to the old one.
+      async function flushActiveRelabel() {
+        const active = state.active;
+        if (!active?.relabelPending) return;
+        if (!googleAccessToken) {
+          updateSyncStatus(state.google.connected ? "Reconnecting to save the domain change..." : "Connect Google in More to save the domain change");
+          return;
+        }
+        try {
+          await ensureGoogleReady();
+          const event = active.googleEventId
+            ? { id: active.googleEventId }
+            : await findDirectEventByBlockId(active.id);
+          // The placeholder may not exist yet; the next resume retries.
+          if (!event) return;
+          await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events/${encodeURIComponent(event.id)}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              summary: `Active: ${categoryShortLabel(active.categoryId)}`,
+              extendedProperties: { private: { ld8: active.categoryId } },
+            }),
+          });
+          // Another switch may have replaced the block while this was in flight.
+          if (state.active?.id === active.id && state.active.categoryId === active.categoryId) {
+            delete state.active.relabelPending;
+            // A poll that read GCal before this patch would bring the old domain back.
+            localActiveSeq += 1;
+            saveState();
+          }
+          updateSyncStatus("Domain change saved");
+          render();
+        } catch (error) {
+          updateSyncStatus(readableError(error), true);
+        }
       }
 
       function tickActiveTimer() {
@@ -2997,6 +3119,7 @@
           await refreshStatus();
           drainPersistentSyncQueue();
           ensureActiveBlockSynced();
+          flushActiveRelabel();
         } catch (error) {
           renderGoogleStatus(readableError(error));
           showRecovery(readableError(error), "Google Calendar connection failed");
