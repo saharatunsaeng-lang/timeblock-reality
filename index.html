@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261009-two-fixes" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261009-forgot-time" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -652,31 +652,6 @@
         display: none;
       }
 
-      .when-chips {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 6px;
-      }
-
-      .when-chip {
-        min-height: 44px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--surface-strong);
-        color: var(--ink);
-        font-weight: 850;
-      }
-
-      .when-chip.active {
-        background: var(--accent);
-        border-color: transparent;
-        color: #fff;
-      }
-
-      .when-chip:disabled {
-        opacity: 0.35;
-      }
-
       /* iOS gives time inputs an intrinsic width that overflows unless the
          native look is dropped. */
       .relabel-when input {
@@ -1046,8 +1021,7 @@
         <button class="round-button" id="closeRelabelSheetButton" type="button" aria-label="Close">&#215;</button>
       </div>
       <div class="relabel-when" id="relabelWhen" hidden>
-        <span class="label">เริ่มทำไปแล้วกี่นาที? (หรือใส่เวลาเอง)</span>
-        <div class="when-chips" id="whenChips"></div>
+        <span class="label">เริ่มทำตอนกี่โมง?</span>
         <input id="relabelFrom" type="time" aria-label="เวลาที่เริ่มจริง" />
       </div>
       <p class="relabel-hint" id="relabelHint"></p>
@@ -1100,7 +1074,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20261009-two-fixes"></script>
+    <script src="push-config.js?v=20261009-forgot-time"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -1165,7 +1139,6 @@
       // Fix-domain sheet: "wrong" or "forgot", and the start picked for "forgot".
       let relabelMode = "wrong";
       let relabelPickedAt = null;
-      const forgotChipMinutes = [10, 20, 30, 60];
 
       const els = {
         viewEyebrow: document.querySelector("#viewEyebrow"),
@@ -1181,7 +1154,7 @@
         forgotTapButton: document.querySelector("#forgotTapButton"),
         relabelSheetLabel: document.querySelector("#relabelSheetLabel"),
         relabelWhen: document.querySelector("#relabelWhen"),
-        whenChips: document.querySelector("#whenChips"),
+
         relabelSheet: document.querySelector("#relabelSheet"),
         relabelSheetScrim: document.querySelector("#relabelSheetScrim"),
         relabelSheetTitle: document.querySelector("#relabelSheetTitle"),
@@ -2199,27 +2172,14 @@
       function openRelabelSheet(mode) {
         if (!state.active) return;
         relabelMode = mode;
-        relabelPickedAt = null;
-        els.relabelFrom.value = "";
+        // Start from now; the person winds it back to when they really started.
+        relabelPickedAt = mode === "forgot" ? new Date(Math.floor(Date.now() / 60000) * 60000) : null;
+        els.relabelFrom.value = relabelPickedAt ? toTimeInput(relabelPickedAt) : "";
         const current = categoryShortLabel(state.active.categoryId);
         const startedAt = formatTime(state.active.start);
         els.relabelSheetLabel.textContent = mode === "wrong" ? "กดผิด - เปลี่ยนเป็นอันไหน?" : "ลืมกด - ไปทำอะไรมา?";
         els.relabelSheetTitle.textContent = `${current} เริ่ม ${startedAt}`;
         els.relabelWhen.hidden = mode !== "forgot";
-        els.whenChips.innerHTML = "";
-        forgotChipMinutes.forEach((minutes) => {
-          const chip = document.createElement("button");
-          chip.type = "button";
-          chip.className = "when-chip";
-          chip.textContent = `${minutes} นาที`;
-          chip.dataset.minutes = String(minutes);
-          chip.addEventListener("click", () => {
-            relabelPickedAt = roundDate(new Date(Date.now() - minutes * 60 * 1000), 1);
-            els.relabelFrom.value = toTimeInput(relabelPickedAt);
-            renderRelabelSheet();
-          });
-          els.whenChips.append(chip);
-        });
         els.relabelGrid.innerHTML = "";
         categories.forEach((category) => {
           const button = document.createElement("button");
@@ -2251,12 +2211,6 @@
       function renderRelabelSheet() {
         if (!state.active) return;
         const current = categoryShortLabel(state.active.categoryId);
-        const startMs = new Date(state.active.start).getTime();
-        [...els.whenChips.children].forEach((chip) => {
-          const at = Date.now() - Number(chip.dataset.minutes) * 60 * 1000;
-          chip.disabled = at - startMs < 60 * 1000;
-          chip.classList.toggle("active", Boolean(relabelPickedAt) && els.relabelFrom.value === toTimeInput(new Date(at)));
-        });
         const ready = relabelMode === "wrong" || forgotTimeValid(relabelPickedAt);
         [...els.relabelGrid.children].forEach((button) => {
           const same = button.dataset.category === state.active.categoryId;

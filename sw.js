@@ -1,9 +1,9 @@
-const cacheName = "timeblock-reality-v41-two-fixes";
+const cacheName = "timeblock-reality-v42-forgot-time";
 const assets = [
-  "./?v=20261009-two-fixes",
-  "index.html?v=20261009-two-fixes",
-  "manifest.webmanifest?v=20261009-two-fixes",
-  "push-config.js?v=20261009-two-fixes",
+  "./?v=20261009-forgot-time",
+  "index.html?v=20261009-forgot-time",
+  "manifest.webmanifest?v=20261009-forgot-time",
+  "push-config.js?v=20261009-forgot-time",
   "icon.svg",
 ];
 
@@ -66,7 +66,7 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of clients) {
         if (client.url.startsWith(self.location.origin) && "focus" in client) return client.focus();
       }
-      return self.clients.openWindow("./?v=20261009-two-fixes");
+      return self.clients.openWindow("./?v=20261009-forgot-time");
     }),
   );
 });
