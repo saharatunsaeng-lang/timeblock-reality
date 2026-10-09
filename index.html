@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261009-fix-sheet" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261009-two-fixes" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -625,6 +625,16 @@
         font-weight: 850;
       }
 
+      .relabel-actions {
+        display: grid;
+        gap: 8px;
+        align-self: start;
+      }
+
+      .relabel-actions[hidden] {
+        display: none;
+      }
+
       .relabel-button {
         align-self: start;
         min-height: 36px;
@@ -632,13 +642,44 @@
         font-size: 0.78rem;
       }
 
-      .relabel-from {
+      .relabel-when {
+        display: grid;
+        gap: 8px;
         margin-top: 12px;
       }
 
-      /* iOS gives time inputs an intrinsic width that overflows a half-width
-         column unless the native look is dropped. */
-      .relabel-from input {
+      .relabel-when[hidden] {
+        display: none;
+      }
+
+      .when-chips {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 6px;
+      }
+
+      .when-chip {
+        min-height: 44px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface-strong);
+        color: var(--ink);
+        font-weight: 850;
+      }
+
+      .when-chip.active {
+        background: var(--accent);
+        border-color: transparent;
+        color: #fff;
+      }
+
+      .when-chip:disabled {
+        opacity: 0.35;
+      }
+
+      /* iOS gives time inputs an intrinsic width that overflows unless the
+         native look is dropped. */
+      .relabel-when input {
         display: block;
         width: 100%;
         min-width: 0;
@@ -828,7 +869,10 @@
             <span class="block-time" id="activeMeta"></span>
             <span class="status-chip warn checkin-signal" id="activeSignal" hidden>30m check-in</span>
           </div>
-          <button class="secondary-button relabel-button" id="relabelButton" type="button" hidden>Fix domain</button>
+          <div class="relabel-actions" id="relabelActions" hidden>
+            <button class="secondary-button relabel-button" id="wrongDomainButton" type="button">กดผิด</button>
+            <button class="secondary-button relabel-button" id="forgotTapButton" type="button">ลืมกด</button>
+          </div>
         </section>
 
         <div class="domain-grid" id="quickGrid"></div>
@@ -996,20 +1040,15 @@
     <section class="sheet" id="relabelSheet" role="dialog" aria-modal="true" aria-labelledby="relabelSheetTitle" hidden>
       <div class="sheet-head">
         <div>
-          <span class="label">Wrong domain? Tap the right one below</span>
+          <span class="label" id="relabelSheetLabel">-</span>
           <strong id="relabelSheetTitle">-</strong>
         </div>
         <button class="round-button" id="closeRelabelSheetButton" type="button" aria-label="Close">&#215;</button>
       </div>
-      <div class="form-row relabel-from">
-        <label>
-          From
-          <input id="relabelFrom" type="time" />
-        </label>
-        <label>
-          Until (blank = still on it)
-          <input id="relabelUntil" type="time" />
-        </label>
+      <div class="relabel-when" id="relabelWhen" hidden>
+        <span class="label">เริ่มทำไปแล้วกี่นาที? (หรือใส่เวลาเอง)</span>
+        <div class="when-chips" id="whenChips"></div>
+        <input id="relabelFrom" type="time" aria-label="เวลาที่เริ่มจริง" />
       </div>
       <p class="relabel-hint" id="relabelHint"></p>
       <div class="domain-grid" id="relabelGrid"></div>
@@ -1061,7 +1100,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20261009-fix-sheet"></script>
+    <script src="push-config.js?v=20261009-two-fixes"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -1123,6 +1162,10 @@
       // the old running block, and applying it would undo the switch until the next
       // 30 s poll - check-in notifications then follow the wrong domain.
       let localActiveSeq = 0;
+      // Fix-domain sheet: "wrong" or "forgot", and the start picked for "forgot".
+      let relabelMode = "wrong";
+      let relabelPickedAt = null;
+      const forgotChipMinutes = [10, 20, 30, 60];
 
       const els = {
         viewEyebrow: document.querySelector("#viewEyebrow"),
@@ -1133,14 +1176,18 @@
         activeElapsed: document.querySelector("#activeElapsed"),
         activeMeta: document.querySelector("#activeMeta"),
         activeSignal: document.querySelector("#activeSignal"),
-        relabelButton: document.querySelector("#relabelButton"),
+        relabelActions: document.querySelector("#relabelActions"),
+        wrongDomainButton: document.querySelector("#wrongDomainButton"),
+        forgotTapButton: document.querySelector("#forgotTapButton"),
+        relabelSheetLabel: document.querySelector("#relabelSheetLabel"),
+        relabelWhen: document.querySelector("#relabelWhen"),
+        whenChips: document.querySelector("#whenChips"),
         relabelSheet: document.querySelector("#relabelSheet"),
         relabelSheetScrim: document.querySelector("#relabelSheetScrim"),
         relabelSheetTitle: document.querySelector("#relabelSheetTitle"),
         closeRelabelSheetButton: document.querySelector("#closeRelabelSheetButton"),
         relabelGrid: document.querySelector("#relabelGrid"),
         relabelFrom: document.querySelector("#relabelFrom"),
-        relabelUntil: document.querySelector("#relabelUntil"),
         relabelHint: document.querySelector("#relabelHint"),
         quickGrid: document.querySelector("#quickGrid"),
         fixSheet: document.querySelector("#fixSheet"),
@@ -1245,11 +1292,14 @@
         els.fixLastButton.addEventListener("click", () => openFixSheet());
         els.syncLastButton.addEventListener("click", retrySyncLastBlock);
         els.closeFixSheetButton.addEventListener("click", closeFixSheet);
-        els.relabelButton.addEventListener("click", openRelabelSheet);
+        els.wrongDomainButton.addEventListener("click", () => openRelabelSheet("wrong"));
+        els.forgotTapButton.addEventListener("click", () => openRelabelSheet("forgot"));
         els.closeRelabelSheetButton.addEventListener("click", closeRelabelSheet);
         els.relabelSheetScrim.addEventListener("click", closeRelabelSheet);
-        els.relabelFrom.addEventListener("input", renderRelabelHint);
-        els.relabelUntil.addEventListener("input", renderRelabelHint);
+        els.relabelFrom.addEventListener("input", () => {
+          relabelPickedAt = els.relabelFrom.value ? latestOccurrence(els.relabelFrom.value, new Date()) : null;
+          renderRelabelSheet();
+        });
         els.fixSheetScrim.addEventListener("click", closeFixSheet);
         els.fixLastForm.addEventListener("submit", fixLastBlock);
         els.splitButton.addEventListener("click", splitFixTargetBlock);
@@ -2122,9 +2172,9 @@
           els.activeElapsed.hidden = true;
           els.activeElapsed.textContent = "";
           els.activeMeta.textContent = bootstrapReady ? "Tap a domain to start" : "Loading current state...";
-          els.relabelButton.hidden = true;
+          els.relabelActions.hidden = true;
         } else {
-          els.relabelButton.hidden = false;
+          els.relabelActions.hidden = false;
           els.activeTitle.textContent = categoryShortLabel(state.active.categoryId);
           els.runningLabel.hidden = false;
           els.activeElapsed.hidden = false;
@@ -2140,12 +2190,36 @@
         });
       }
 
-      function openRelabelSheet() {
+      // Two separate fixes for the running block:
+      // "wrong" - tapped the wrong domain: pick the right one, start stays.
+      // "forgot" - started something else without tapping: pick when it really
+      //   started and what it was; the running block ends there and the new one
+      //   keeps running until the next tap.
+
+      function openRelabelSheet(mode) {
         if (!state.active) return;
-        els.relabelSheetTitle.textContent = `${categoryShortLabel(state.active.categoryId)} since ${formatTime(state.active.start)}`;
-        els.relabelFrom.value = toTimeInput(new Date(state.active.start));
-        els.relabelUntil.value = "";
-        renderRelabelHint();
+        relabelMode = mode;
+        relabelPickedAt = null;
+        els.relabelFrom.value = "";
+        const current = categoryShortLabel(state.active.categoryId);
+        const startedAt = formatTime(state.active.start);
+        els.relabelSheetLabel.textContent = mode === "wrong" ? "กดผิด - เปลี่ยนเป็นอันไหน?" : "ลืมกด - ไปทำอะไรมา?";
+        els.relabelSheetTitle.textContent = `${current} เริ่ม ${startedAt}`;
+        els.relabelWhen.hidden = mode !== "forgot";
+        els.whenChips.innerHTML = "";
+        forgotChipMinutes.forEach((minutes) => {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "when-chip";
+          chip.textContent = `${minutes} นาที`;
+          chip.dataset.minutes = String(minutes);
+          chip.addEventListener("click", () => {
+            relabelPickedAt = roundDate(new Date(Date.now() - minutes * 60 * 1000), 1);
+            els.relabelFrom.value = toTimeInput(relabelPickedAt);
+            renderRelabelSheet();
+          });
+          els.whenChips.append(chip);
+        });
         els.relabelGrid.innerHTML = "";
         categories.forEach((category) => {
           const button = document.createElement("button");
@@ -2153,114 +2227,62 @@
           button.type = "button";
           button.textContent = category.code;
           button.title = category.name;
-          button.classList.toggle("active", category.id === state.active.categoryId);
+          button.dataset.category = category.id;
           button.addEventListener("click", () => chooseRelabelDomain(category.id));
           els.relabelGrid.append(button);
         });
-        renderRelabelHint();
+        renderRelabelSheet();
         els.relabelSheet.hidden = false;
         els.relabelSheetScrim.hidden = false;
         document.body.style.overflow = "hidden";
       }
 
-      // From/Until pick the mode. From at the block's own start with no Until
-      // renames it; a later From splits it there; an Until slots the other domain
-      // in between and then stops - "LS was running, I went and did BD"; nothing
-      // runs after it until the next tap.
       function latestOccurrence(time, now) {
         let at = fromDateAndTime(dateKey(now), time);
         if (at > now) at = addDays(at, -1);
         return at;
       }
 
-      function resolveRelabelFrom() {
-        if (!state.active) return { mode: "invalid" };
-        const start = new Date(state.active.start);
-        const now = new Date();
-        const from = !els.relabelFrom.value || els.relabelFrom.value === toTimeInput(start)
-          ? start
-          : latestOccurrence(els.relabelFrom.value, now);
-        if (from < start) return { mode: "invalid" };
-        const fromStart = from.getTime() === start.getTime();
-        if (!fromStart && from - start < 60 * 1000) return { mode: "invalid" };
-        if (!els.relabelUntil.value) return fromStart ? { mode: "rename" } : { mode: "split", at: from };
-        const until = latestOccurrence(els.relabelUntil.value, now);
-        if (until - from < 60 * 1000 || now - until < 60 * 1000) return { mode: "invalid" };
-        return { mode: "insert", from, until, fromStart };
+      function forgotTimeValid(at) {
+        if (!state.active || !at) return false;
+        return at - new Date(state.active.start) >= 60 * 1000 && at <= new Date();
       }
 
-      function renderRelabelHint() {
-        const choice = resolveRelabelFrom();
-        const current = state.active ? categoryShortLabel(state.active.categoryId) : "";
-        const hints = {
-          rename: `Tap the correct domain - it replaces ${current}, start stays ${state.active ? formatTime(state.active.start) : ""}.`,
-          split: `${current} ends at ${formatTime(choice.at)}; the new domain runs from then.`,
-          insert: `${current} ends at ${formatTime(choice.from)}; new domain ${formatTime(choice.from)}-${formatTime(choice.until)}, then nothing runs until your next tap.`,
-          invalid: state.active ? `Use times between ${formatTime(state.active.start)} and now, From before Until.` : "",
-        };
-        els.relabelHint.textContent = hints[choice.mode];
-        [...els.relabelGrid.children].forEach((button) => { button.disabled = choice.mode === "invalid"; });
+      function renderRelabelSheet() {
+        if (!state.active) return;
+        const current = categoryShortLabel(state.active.categoryId);
+        const startMs = new Date(state.active.start).getTime();
+        [...els.whenChips.children].forEach((chip) => {
+          const at = Date.now() - Number(chip.dataset.minutes) * 60 * 1000;
+          chip.disabled = at - startMs < 60 * 1000;
+          chip.classList.toggle("active", Boolean(relabelPickedAt) && els.relabelFrom.value === toTimeInput(new Date(at)));
+        });
+        const ready = relabelMode === "wrong" || forgotTimeValid(relabelPickedAt);
+        [...els.relabelGrid.children].forEach((button) => {
+          const same = button.dataset.category === state.active.categoryId;
+          button.disabled = !ready || same;
+          button.classList.toggle("active", same);
+        });
+        if (relabelMode === "wrong") {
+          els.relabelHint.textContent = `กด Domain ที่ถูก - ${current} จะถูกเปลี่ยน เวลาเริ่ม ${formatTime(state.active.start)} เหมือนเดิม`;
+        } else if (!relabelPickedAt) {
+          els.relabelHint.textContent = "เลือกเวลาที่เริ่มทำก่อน แล้วกด Domain ที่ทำ";
+        } else if (!forgotTimeValid(relabelPickedAt)) {
+          els.relabelHint.textContent = `เวลาต้องอยู่หลัง ${formatTime(state.active.start)} และไม่เกินตอนนี้`;
+        } else {
+          els.relabelHint.textContent = `${current} จบ ${formatTime(relabelPickedAt)} แล้ว Domain ที่กดจะเริ่ม ${formatTime(relabelPickedAt)} และวิ่งต่อ`;
+        }
       }
 
-      async function chooseRelabelDomain(categoryId) {
-        const choice = resolveRelabelFrom();
-        if (choice.mode === "invalid") return;
-        if (choice.mode === "rename") {
+      function chooseRelabelDomain(categoryId) {
+        if (relabelMode === "wrong") {
           relabelActiveBlock(categoryId);
           return;
         }
+        if (!forgotTimeValid(relabelPickedAt)) return;
+        const at = relabelPickedAt;
         closeRelabelSheet();
-        if (choice.mode === "split") {
-          startQuickBlock(categoryId, choice.at);
-          return;
-        }
-        // A back-dated switch at From, then a stop at Until. Each must land
-        // before the next is sent.
-        if (choice.fromStart) await relabelActiveBlock(categoryId);
-        else await startQuickBlock(categoryId, choice.from);
-        await stopActiveBlock(choice.until);
-      }
-
-      async function stopActiveBlock(endAt) {
-        if (!state.active || isCaptureLocked()) return;
-        localActionInFlight = true;
-        try {
-          const blockId = state.active.id;
-          logAction(`stop ${categoryShortLabel(state.active.categoryId)} at ${formatTime(endAt)}`);
-          const endedBlock = finishActiveBlockLocally(endAt);
-          syncBackgroundPushState({ keepalive: true });
-          scheduleActiveSignal();
-          render();
-          if (hasPairedWatchWorker()) await stopActiveOnWorker(blockId, endAt);
-          else if (endedBlock) queueActualSync(endedBlock);
-        } catch (error) {
-          updateSyncStatus(readableError(error), true);
-        } finally {
-          localActionInFlight = false;
-          render();
-        }
-      }
-
-      async function stopActiveOnWorker(blockId, endAt) {
-        const controller = new AbortController();
-        const timeout = window.setTimeout(() => controller.abort(), 8000);
-        try {
-          const response = await fetch(`${calendarWorkerUrl}/app/stop-active`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${workerDeviceToken()}`, "content-type": "application/json" },
-            body: JSON.stringify({ blockId, end: new Date(endAt).toISOString() }),
-            cache: "no-store",
-            signal: controller.signal,
-          });
-          const result = await response.json();
-          if (!response.ok) throw new Error(result.error || `Watch stop failed: ${response.status}`);
-          applyPairedWorkerSwitch(result, "");
-        } catch (error) {
-          logAction(`watch stop pending: ${readableError(error)}`);
-          updateSyncStatus("Stop not saved to GCal - check the Last block", true);
-        } finally {
-          window.clearTimeout(timeout);
-        }
+        startQuickBlock(categoryId, at);
       }
 
       function closeRelabelSheet() {

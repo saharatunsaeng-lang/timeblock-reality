@@ -1,7 +1,7 @@
 {
   "name": "TimeBlock Reality",
   "short_name": "TimeBlock",
-  "start_url": "./?v=20261009-fix-sheet",
+  "start_url": "./?v=20261009-two-fixes",
   "display": "standalone",
   "background_color": "#f7f3ea",
   "theme_color": "#f7f3ea",
