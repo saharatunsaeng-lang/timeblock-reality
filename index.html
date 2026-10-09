@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261008-relabel-worker" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261009-backdate-switch" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -632,6 +632,10 @@
         font-size: 0.78rem;
       }
 
+      .relabel-from {
+        margin-top: 12px;
+      }
+
       .relabel-hint {
         margin: 10px 0 14px;
         color: var(--muted);
@@ -812,7 +816,7 @@
             <span class="block-time" id="activeMeta"></span>
             <span class="status-chip warn checkin-signal" id="activeSignal" hidden>30m check-in</span>
           </div>
-          <button class="secondary-button relabel-button" id="relabelButton" type="button" hidden>Wrong domain?</button>
+          <button class="secondary-button relabel-button" id="relabelButton" type="button" hidden>Fix domain</button>
         </section>
 
         <div class="domain-grid" id="quickGrid"></div>
@@ -985,7 +989,11 @@
         </div>
         <button class="round-button" id="closeRelabelSheetButton" type="button" aria-label="Close">&#215;</button>
       </div>
-      <p class="relabel-hint">Keeps the start time - only the domain changes.</p>
+      <label class="relabel-from">
+        Really started at
+        <input id="relabelFrom" type="time" />
+      </label>
+      <p class="relabel-hint" id="relabelHint"></p>
       <div class="domain-grid" id="relabelGrid"></div>
     </section>
     <div class="sheet-scrim" id="fixSheetScrim" hidden></div>
@@ -1035,7 +1043,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20261008-relabel-worker"></script>
+    <script src="push-config.js?v=20261009-backdate-switch"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -1113,6 +1121,8 @@
         relabelSheetTitle: document.querySelector("#relabelSheetTitle"),
         closeRelabelSheetButton: document.querySelector("#closeRelabelSheetButton"),
         relabelGrid: document.querySelector("#relabelGrid"),
+        relabelFrom: document.querySelector("#relabelFrom"),
+        relabelHint: document.querySelector("#relabelHint"),
         quickGrid: document.querySelector("#quickGrid"),
         fixSheet: document.querySelector("#fixSheet"),
         fixSheetScrim: document.querySelector("#fixSheetScrim"),
@@ -1219,6 +1229,7 @@
         els.relabelButton.addEventListener("click", openRelabelSheet);
         els.closeRelabelSheetButton.addEventListener("click", closeRelabelSheet);
         els.relabelSheetScrim.addEventListener("click", closeRelabelSheet);
+        els.relabelFrom.addEventListener("input", renderRelabelHint);
         els.fixSheetScrim.addEventListener("click", closeFixSheet);
         els.fixLastForm.addEventListener("submit", fixLastBlock);
         els.splitButton.addEventListener("click", splitFixTargetBlock);
@@ -1291,14 +1302,14 @@
         els.manualEnd.value = toTimeInput(addMinutes(roundDate(now, 15), 30));
       }
 
-      async function startQuickBlock(categoryId) {
+      async function startQuickBlock(categoryId, backdatedAt = null) {
         if (isCaptureLocked()) return;
         localActionInFlight = true;
         activateTab("capture");
         try {
           logAction(`start ${categoryShortLabel(categoryId)}`);
           // One timestamp makes a domain switch continuous: the old block ends exactly when the next starts.
-          const transitionAt = new Date();
+          const transitionAt = backdatedAt ? new Date(backdatedAt) : new Date();
           localActiveSeq += 1;
           const endedBlock = finishActiveBlockLocally(transitionAt);
           state.active = {
@@ -1306,7 +1317,12 @@
             categoryId,
             start: transitionAt.toISOString(),
             workerPending: hasPairedWatchWorker(),
+            // Normal taps let the worker stamp its own clock; only a back-dated
+            // switch sends a time, so phone clock drift cannot reject a tap.
+            ...(backdatedAt ? { backdated: true } : {}),
           };
+          // Check-ins already past at the back-dated start are not news.
+          if (backdatedAt) state.active.reminderCount = Math.floor((Date.now() - transitionAt.getTime()) / thirtyMinuteSignalMs);
           saveState();
           syncHomeScreenBadge();
           syncBackgroundPushState({ keepalive: true });
@@ -1806,7 +1822,11 @@
               Authorization: `Bearer ${workerDeviceToken()}`,
               "content-type": "application/json",
             },
-            body: JSON.stringify({ domain: activeBlock.categoryId, blockId: activeBlock.id }),
+            body: JSON.stringify({
+              domain: activeBlock.categoryId,
+              blockId: activeBlock.id,
+              ...(activeBlock.backdated ? { start: activeBlock.start } : {}),
+            }),
             cache: "no-store",
             signal: controller.signal,
           });
@@ -2103,6 +2123,8 @@
       function openRelabelSheet() {
         if (!state.active) return;
         els.relabelSheetTitle.textContent = `${categoryShortLabel(state.active.categoryId)} since ${formatTime(state.active.start)}`;
+        els.relabelFrom.value = toTimeInput(new Date(state.active.start));
+        renderRelabelHint();
         els.relabelGrid.innerHTML = "";
         categories.forEach((category) => {
           const button = document.createElement("button");
@@ -2111,12 +2133,48 @@
           button.textContent = category.code;
           button.title = category.name;
           button.classList.toggle("active", category.id === state.active.categoryId);
-          button.addEventListener("click", () => relabelActiveBlock(category.id));
+          button.addEventListener("click", () => chooseRelabelDomain(category.id));
           els.relabelGrid.append(button);
         });
+        renderRelabelHint();
         els.relabelSheet.hidden = false;
         els.relabelSheetScrim.hidden = false;
         document.body.style.overflow = "hidden";
+      }
+
+      // The time field picks the mode: the block's own start renames it, a later
+      // time splits it there - the forgot-to-tap case.
+      function resolveRelabelFrom() {
+        if (!state.active || !els.relabelFrom.value) return { mode: "rename" };
+        const start = new Date(state.active.start);
+        if (els.relabelFrom.value === toTimeInput(start)) return { mode: "rename" };
+        const now = new Date();
+        let at = fromDateAndTime(dateKey(now), els.relabelFrom.value);
+        if (at > now) at = addDays(at, -1);
+        if (at - start < 60 * 1000) return { mode: "invalid" };
+        return { mode: "split", at };
+      }
+
+      function renderRelabelHint() {
+        const choice = resolveRelabelFrom();
+        const current = state.active ? categoryShortLabel(state.active.categoryId) : "";
+        els.relabelHint.textContent = choice.mode === "split"
+          ? `${current} ends at ${formatTime(choice.at)}; the new domain runs from then.`
+          : choice.mode === "invalid"
+            ? `Pick a time between ${formatTime(state.active.start)} and now.`
+            : "Same start time - only the domain changes.";
+        [...els.relabelGrid.children].forEach((button) => { button.disabled = choice.mode === "invalid"; });
+      }
+
+      function chooseRelabelDomain(categoryId) {
+        const choice = resolveRelabelFrom();
+        if (choice.mode === "invalid") return;
+        if (choice.mode === "rename") {
+          relabelActiveBlock(categoryId);
+          return;
+        }
+        closeRelabelSheet();
+        startQuickBlock(categoryId, choice.at);
       }
 
       function closeRelabelSheet() {

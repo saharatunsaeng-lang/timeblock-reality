@@ -25,6 +25,7 @@ const LD8 = [
 ];
 const ACTIVE_PLACEHOLDER_MINUTES = 360;
 const MIN_BLOCK_MS = 60 * 1000;
+const MAX_BACKDATE_MS = 12 * 60 * 60 * 1000;
 const PWA_ORIGIN = "https://saharatunsaeng-lang.github.io";
 const PAIRING_TTL_MS = 15 * 60 * 1000;
 
@@ -509,12 +510,26 @@ export class CalendarCredential {
     const activeEvents = await this.findActiveEvents(calendar.id, now);
     const existing = activeEvents.find((event) => privateProps(event).blockId === requestedBlockId);
 
+    // The app may back-date a switch ("I actually started this at 14:10"). Only
+    // within the running block: closing an older block at a time before its own
+    // start would shrink it under a minute and delete it.
+    let at = now;
+    if (!fromQuery && body.start && !existing) {
+      const backdated = new Date(body.start);
+      const newest = activeEvents[0] ? new Date(activeEvents[0].start.dateTime) : null;
+      if (!Number.isFinite(backdated.getTime()) || backdated > now || now - backdated > MAX_BACKDATE_MS
+        || (newest && backdated - newest < MIN_BLOCK_MS)) {
+        return json({ error: "start must fall inside the running block." }, 400);
+      }
+      at = backdated;
+    }
+
     // Close every placeholder, not just the newest: the phone may have opened one
     // this side had not seen yet, and leaving it running duplicates the timeline.
     const closed = [];
     for (const stale of activeEvents) {
       if (stale === existing) continue;
-      const result = await this.closeActiveEvent(calendar.id, stale, now);
+      const result = await this.closeActiveEvent(calendar.id, stale, at);
       closed.push(result);
     }
 
@@ -525,13 +540,13 @@ export class CalendarCredential {
       return json({ started: domain.code, at: hhmm(now), active: appActiveEvent(existing), closed, retried: true });
     }
 
-    const end = new Date(now.getTime() + ACTIVE_PLACEHOLDER_MINUTES * 60 * 1000);
+    const end = new Date(Math.max(at.getTime() + ACTIVE_PLACEHOLDER_MINUTES * 60 * 1000, now.getTime() + 60 * 60 * 1000));
     const created = await this.google(`/calendars/${encodeURIComponent(calendar.id)}/events`, {
       method: "POST",
       body: JSON.stringify({
         summary: `Active: ${domain.code}`,
         description: "Active block from TimeBlock Reality",
-        start: { dateTime: now.toISOString(), timeZone: "Asia/Bangkok" },
+        start: { dateTime: at.toISOString(), timeZone: "Asia/Bangkok" },
         end: { dateTime: end.toISOString(), timeZone: "Asia/Bangkok" },
         extendedProperties: {
           private: { ld8: domain.id, source: "timeblock-reality", status: "active", blockId: requestedBlockId },
@@ -539,7 +554,7 @@ export class CalendarCredential {
       }),
     });
 
-    return json({ started: domain.code, at: hhmm(now), active: appActiveEvent(created), closed });
+    return json({ started: domain.code, at: hhmm(at), active: appActiveEvent(created), closed });
   }
 
   // A mistapped domain is corrected on the same block: start time and blockId

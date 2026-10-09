@@ -1,9 +1,9 @@
-const cacheName = "timeblock-reality-v36-relabel-worker";
+const cacheName = "timeblock-reality-v37-backdate-switch";
 const assets = [
-  "./?v=20261008-relabel-worker",
-  "index.html?v=20261008-relabel-worker",
-  "manifest.webmanifest?v=20261008-relabel-worker",
-  "push-config.js?v=20261008-relabel-worker",
+  "./?v=20261009-backdate-switch",
+  "index.html?v=20261009-backdate-switch",
+  "manifest.webmanifest?v=20261009-backdate-switch",
+  "push-config.js?v=20261009-backdate-switch",
   "icon.svg",
 ];
 
@@ -66,7 +66,7 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of clients) {
         if (client.url.startsWith(self.location.origin) && "focus" in client) return client.focus();
       }
-      return self.clients.openWindow("./?v=20261008-relabel-worker");
+      return self.clients.openWindow("./?v=20261009-backdate-switch");
     }),
   );
 });
