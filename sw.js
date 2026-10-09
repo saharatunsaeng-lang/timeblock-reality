@@ -1,9 +1,9 @@
-const cacheName = "timeblock-reality-v39-insert-stop";
+const cacheName = "timeblock-reality-v40-fix-sheet";
 const assets = [
-  "./?v=20261009-insert-stop",
-  "index.html?v=20261009-insert-stop",
-  "manifest.webmanifest?v=20261009-insert-stop",
-  "push-config.js?v=20261009-insert-stop",
+  "./?v=20261009-fix-sheet",
+  "index.html?v=20261009-fix-sheet",
+  "manifest.webmanifest?v=20261009-fix-sheet",
+  "push-config.js?v=20261009-fix-sheet",
   "icon.svg",
 ];
 
@@ -66,7 +66,7 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of clients) {
         if (client.url.startsWith(self.location.origin) && "focus" in client) return client.focus();
       }
-      return self.clients.openWindow("./?v=20261009-insert-stop");
+      return self.clients.openWindow("./?v=20261009-fix-sheet");
     }),
   );
 });

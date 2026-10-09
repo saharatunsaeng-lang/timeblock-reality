@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261009-insert-stop" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261009-fix-sheet" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -636,6 +636,18 @@
         margin-top: 12px;
       }
 
+      /* iOS gives time inputs an intrinsic width that overflows a half-width
+         column unless the native look is dropped. */
+      .relabel-from input {
+        display: block;
+        width: 100%;
+        min-width: 0;
+        min-height: 48px;
+        font-size: 1rem;
+        -webkit-appearance: none;
+        appearance: none;
+      }
+
       .relabel-hint {
         margin: 10px 0 14px;
         color: var(--muted);
@@ -984,7 +996,7 @@
     <section class="sheet" id="relabelSheet" role="dialog" aria-modal="true" aria-labelledby="relabelSheetTitle" hidden>
       <div class="sheet-head">
         <div>
-          <span class="label">Change running domain</span>
+          <span class="label">Wrong domain? Tap the right one below</span>
           <strong id="relabelSheetTitle">-</strong>
         </div>
         <button class="round-button" id="closeRelabelSheetButton" type="button" aria-label="Close">&#215;</button>
@@ -1049,7 +1061,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20261009-insert-stop"></script>
+    <script src="push-config.js?v=20261009-fix-sheet"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -2181,7 +2193,7 @@
         const choice = resolveRelabelFrom();
         const current = state.active ? categoryShortLabel(state.active.categoryId) : "";
         const hints = {
-          rename: "Same start time - only the domain changes.",
+          rename: `Tap the correct domain - it replaces ${current}, start stays ${state.active ? formatTime(state.active.start) : ""}.`,
           split: `${current} ends at ${formatTime(choice.at)}; the new domain runs from then.`,
           insert: `${current} ends at ${formatTime(choice.from)}; new domain ${formatTime(choice.from)}-${formatTime(choice.until)}, then nothing runs until your next tap.`,
           invalid: state.active ? `Use times between ${formatTime(state.active.start)} and now, From before Until.` : "",
