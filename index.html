@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261009-backdate-switch" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261009-insert-block" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -989,10 +989,16 @@
         </div>
         <button class="round-button" id="closeRelabelSheetButton" type="button" aria-label="Close">&#215;</button>
       </div>
-      <label class="relabel-from">
-        Really started at
-        <input id="relabelFrom" type="time" />
-      </label>
+      <div class="form-row relabel-from">
+        <label>
+          From
+          <input id="relabelFrom" type="time" />
+        </label>
+        <label>
+          Until (blank = still on it)
+          <input id="relabelUntil" type="time" />
+        </label>
+      </div>
       <p class="relabel-hint" id="relabelHint"></p>
       <div class="domain-grid" id="relabelGrid"></div>
     </section>
@@ -1043,7 +1049,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20261009-backdate-switch"></script>
+    <script src="push-config.js?v=20261009-insert-block"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -1122,6 +1128,7 @@
         closeRelabelSheetButton: document.querySelector("#closeRelabelSheetButton"),
         relabelGrid: document.querySelector("#relabelGrid"),
         relabelFrom: document.querySelector("#relabelFrom"),
+        relabelUntil: document.querySelector("#relabelUntil"),
         relabelHint: document.querySelector("#relabelHint"),
         quickGrid: document.querySelector("#quickGrid"),
         fixSheet: document.querySelector("#fixSheet"),
@@ -1230,6 +1237,7 @@
         els.closeRelabelSheetButton.addEventListener("click", closeRelabelSheet);
         els.relabelSheetScrim.addEventListener("click", closeRelabelSheet);
         els.relabelFrom.addEventListener("input", renderRelabelHint);
+        els.relabelUntil.addEventListener("input", renderRelabelHint);
         els.fixSheetScrim.addEventListener("click", closeFixSheet);
         els.fixLastForm.addEventListener("submit", fixLastBlock);
         els.splitButton.addEventListener("click", splitFixTargetBlock);
@@ -2124,6 +2132,7 @@
         if (!state.active) return;
         els.relabelSheetTitle.textContent = `${categoryShortLabel(state.active.categoryId)} since ${formatTime(state.active.start)}`;
         els.relabelFrom.value = toTimeInput(new Date(state.active.start));
+        els.relabelUntil.value = "";
         renderRelabelHint();
         els.relabelGrid.innerHTML = "";
         categories.forEach((category) => {
@@ -2142,31 +2151,46 @@
         document.body.style.overflow = "hidden";
       }
 
-      // The time field picks the mode: the block's own start renames it, a later
-      // time splits it there - the forgot-to-tap case.
-      function resolveRelabelFrom() {
-        if (!state.active || !els.relabelFrom.value) return { mode: "rename" };
-        const start = new Date(state.active.start);
-        if (els.relabelFrom.value === toTimeInput(start)) return { mode: "rename" };
-        const now = new Date();
-        let at = fromDateAndTime(dateKey(now), els.relabelFrom.value);
+      // From/Until pick the mode. From at the block's own start with no Until
+      // renames it; a later From splits it there; an Until slots the other domain
+      // in between and resumes the running one afterwards - "LS was running, I
+      // went and did BD, now I'm back on LS".
+      function latestOccurrence(time, now) {
+        let at = fromDateAndTime(dateKey(now), time);
         if (at > now) at = addDays(at, -1);
-        if (at - start < 60 * 1000) return { mode: "invalid" };
-        return { mode: "split", at };
+        return at;
+      }
+
+      function resolveRelabelFrom() {
+        if (!state.active) return { mode: "invalid" };
+        const start = new Date(state.active.start);
+        const now = new Date();
+        const from = !els.relabelFrom.value || els.relabelFrom.value === toTimeInput(start)
+          ? start
+          : latestOccurrence(els.relabelFrom.value, now);
+        if (from < start) return { mode: "invalid" };
+        const fromStart = from.getTime() === start.getTime();
+        if (!fromStart && from - start < 60 * 1000) return { mode: "invalid" };
+        if (!els.relabelUntil.value) return fromStart ? { mode: "rename" } : { mode: "split", at: from };
+        const until = latestOccurrence(els.relabelUntil.value, now);
+        if (until - from < 60 * 1000 || now - until < 60 * 1000) return { mode: "invalid" };
+        return { mode: "insert", from, until, fromStart, resume: state.active.categoryId };
       }
 
       function renderRelabelHint() {
         const choice = resolveRelabelFrom();
         const current = state.active ? categoryShortLabel(state.active.categoryId) : "";
-        els.relabelHint.textContent = choice.mode === "split"
-          ? `${current} ends at ${formatTime(choice.at)}; the new domain runs from then.`
-          : choice.mode === "invalid"
-            ? `Pick a time between ${formatTime(state.active.start)} and now.`
-            : "Same start time - only the domain changes.";
+        const hints = {
+          rename: "Same start time - only the domain changes.",
+          split: `${current} ends at ${formatTime(choice.at)}; the new domain runs from then.`,
+          insert: `New domain ${formatTime(choice.from)}-${formatTime(choice.until)}, then back to ${current}.`,
+          invalid: state.active ? `Use times between ${formatTime(state.active.start)} and now, From before Until.` : "",
+        };
+        els.relabelHint.textContent = hints[choice.mode];
         [...els.relabelGrid.children].forEach((button) => { button.disabled = choice.mode === "invalid"; });
       }
 
-      function chooseRelabelDomain(categoryId) {
+      async function chooseRelabelDomain(categoryId) {
         const choice = resolveRelabelFrom();
         if (choice.mode === "invalid") return;
         if (choice.mode === "rename") {
@@ -2174,7 +2198,15 @@
           return;
         }
         closeRelabelSheet();
-        startQuickBlock(categoryId, choice.at);
+        if (choice.mode === "split") {
+          startQuickBlock(categoryId, choice.at);
+          return;
+        }
+        // Two back-dated switches in order: into the other domain at From, back
+        // to the running one at Until. Each must land before the next is sent.
+        if (choice.fromStart) await relabelActiveBlock(categoryId);
+        else await startQuickBlock(categoryId, choice.from);
+        await startQuickBlock(choice.resume, choice.until);
       }
 
       function closeRelabelSheet() {
@@ -2196,7 +2228,7 @@
         syncHomeScreenBadge();
         syncBackgroundPushState({ keepalive: true });
         render();
-        flushActiveRelabel();
+        return flushActiveRelabel();
       }
 
       // A paired phone asks the Watch worker, which needs no Google sign-in here;
