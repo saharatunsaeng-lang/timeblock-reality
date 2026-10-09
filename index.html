@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261009-insert-block" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261009-insert-stop" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -1049,7 +1049,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20261009-insert-block"></script>
+    <script src="push-config.js?v=20261009-insert-stop"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -2153,8 +2153,8 @@
 
       // From/Until pick the mode. From at the block's own start with no Until
       // renames it; a later From splits it there; an Until slots the other domain
-      // in between and resumes the running one afterwards - "LS was running, I
-      // went and did BD, now I'm back on LS".
+      // in between and then stops - "LS was running, I went and did BD"; nothing
+      // runs after it until the next tap.
       function latestOccurrence(time, now) {
         let at = fromDateAndTime(dateKey(now), time);
         if (at > now) at = addDays(at, -1);
@@ -2174,7 +2174,7 @@
         if (!els.relabelUntil.value) return fromStart ? { mode: "rename" } : { mode: "split", at: from };
         const until = latestOccurrence(els.relabelUntil.value, now);
         if (until - from < 60 * 1000 || now - until < 60 * 1000) return { mode: "invalid" };
-        return { mode: "insert", from, until, fromStart, resume: state.active.categoryId };
+        return { mode: "insert", from, until, fromStart };
       }
 
       function renderRelabelHint() {
@@ -2183,7 +2183,7 @@
         const hints = {
           rename: "Same start time - only the domain changes.",
           split: `${current} ends at ${formatTime(choice.at)}; the new domain runs from then.`,
-          insert: `New domain ${formatTime(choice.from)}-${formatTime(choice.until)}, then back to ${current}.`,
+          insert: `${current} ends at ${formatTime(choice.from)}; new domain ${formatTime(choice.from)}-${formatTime(choice.until)}, then nothing runs until your next tap.`,
           invalid: state.active ? `Use times between ${formatTime(state.active.start)} and now, From before Until.` : "",
         };
         els.relabelHint.textContent = hints[choice.mode];
@@ -2202,11 +2202,53 @@
           startQuickBlock(categoryId, choice.at);
           return;
         }
-        // Two back-dated switches in order: into the other domain at From, back
-        // to the running one at Until. Each must land before the next is sent.
+        // A back-dated switch at From, then a stop at Until. Each must land
+        // before the next is sent.
         if (choice.fromStart) await relabelActiveBlock(categoryId);
         else await startQuickBlock(categoryId, choice.from);
-        await startQuickBlock(choice.resume, choice.until);
+        await stopActiveBlock(choice.until);
+      }
+
+      async function stopActiveBlock(endAt) {
+        if (!state.active || isCaptureLocked()) return;
+        localActionInFlight = true;
+        try {
+          const blockId = state.active.id;
+          logAction(`stop ${categoryShortLabel(state.active.categoryId)} at ${formatTime(endAt)}`);
+          const endedBlock = finishActiveBlockLocally(endAt);
+          syncBackgroundPushState({ keepalive: true });
+          scheduleActiveSignal();
+          render();
+          if (hasPairedWatchWorker()) await stopActiveOnWorker(blockId, endAt);
+          else if (endedBlock) queueActualSync(endedBlock);
+        } catch (error) {
+          updateSyncStatus(readableError(error), true);
+        } finally {
+          localActionInFlight = false;
+          render();
+        }
+      }
+
+      async function stopActiveOnWorker(blockId, endAt) {
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 8000);
+        try {
+          const response = await fetch(`${calendarWorkerUrl}/app/stop-active`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${workerDeviceToken()}`, "content-type": "application/json" },
+            body: JSON.stringify({ blockId, end: new Date(endAt).toISOString() }),
+            cache: "no-store",
+            signal: controller.signal,
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || `Watch stop failed: ${response.status}`);
+          applyPairedWorkerSwitch(result, "");
+        } catch (error) {
+          logAction(`watch stop pending: ${readableError(error)}`);
+          updateSyncStatus("Stop not saved to GCal - check the Last block", true);
+        } finally {
+          window.clearTimeout(timeout);
+        }
       }
 
       function closeRelabelSheet() {

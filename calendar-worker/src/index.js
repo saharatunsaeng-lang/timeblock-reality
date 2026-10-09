@@ -92,6 +92,10 @@ export class CalendarCredential {
       if (!(await this.validPwaToken(request))) return json({ error: "Pair this device first" }, 401);
       return this.relabelActive(request);
     }
+    if (request.method === "POST" && url.pathname === "/app/stop-active") {
+      if (!(await this.validPwaToken(request))) return json({ error: "Pair this device first" }, 401);
+      return this.stopActive(request);
+    }
     if (request.method === "GET" && url.pathname === "/app/bootstrap") return this.appBootstrap(request);
     return json({ error: "Not found" }, 404);
   }
@@ -579,6 +583,27 @@ export class CalendarCredential {
       }),
     });
     return json({ relabeled: domain.code, active: appActiveEvent(updated) });
+  }
+
+  // Ends the running block without starting another - a forgotten domain slotted
+  // in after the fact, with nothing running until the next tap.
+  async stopActive(request) {
+    const body = (await readJson(request)) || {};
+    const blockId = typeof body.blockId === "string" ? body.blockId.trim() : "";
+    const end = new Date(body.end || "");
+    const now = new Date();
+    if (!blockId || !Number.isFinite(end.getTime()) || end > now || now - end > MAX_BACKDATE_MS) {
+      return json({ error: "Use blockId and an end time up to now." }, 400);
+    }
+    const calendar = await this.actualCalendar();
+    if (!calendar) return json({ error: `Calendar not found: ${ACTUAL_CALENDARS[0]}` }, 404);
+    const target = (await this.findActiveEvents(calendar.id, now))
+      .find((event) => privateProps(event).blockId === blockId);
+    if (!target) return json({ error: "That block is no longer running." }, 409);
+    if (end - new Date(target.start.dateTime) < MIN_BLOCK_MS) {
+      return json({ error: "end must fall inside the running block." }, 400);
+    }
+    return json({ closed: [await this.closeActiveEvent(calendar.id, target, end)], active: null });
   }
 
   async running() {
