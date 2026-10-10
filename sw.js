@@ -1,9 +1,9 @@
-const cacheName = "timeblock-reality-v42-forgot-time";
+const cacheName = "timeblock-reality-v43-watch-follow";
 const assets = [
-  "./?v=20261009-forgot-time",
-  "index.html?v=20261009-forgot-time",
-  "manifest.webmanifest?v=20261009-forgot-time",
-  "push-config.js?v=20261009-forgot-time",
+  "./?v=20261010-watch-follow",
+  "index.html?v=20261010-watch-follow",
+  "manifest.webmanifest?v=20261010-watch-follow",
+  "push-config.js?v=20261010-watch-follow",
   "icon.svg",
 ];
 
@@ -66,7 +66,7 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of clients) {
         if (client.url.startsWith(self.location.origin) && "focus" in client) return client.focus();
       }
-      return self.clients.openWindow("./?v=20261009-forgot-time");
+      return self.clients.openWindow("./?v=20261010-watch-follow");
     }),
   );
 });

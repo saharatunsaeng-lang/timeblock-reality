@@ -2,6 +2,8 @@
   "name": "timeblock-calendar-connector",
   "main": "src/index.js",
   "compatibility_date": "2026-07-21",
+  // Moves the phone's check-in when a switch comes from the Watch.
+  "services": [{ "binding": "PUSH_SIGNAL", "service": "timeblock-reality-push" }],
   "durable_objects": {
     "bindings": [
       {

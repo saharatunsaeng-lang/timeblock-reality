@@ -85,15 +85,15 @@ export class CalendarCredential {
     if (request.method === "POST" && url.pathname === "/v1/create-pairing") return this.createPairing();
     if (request.method === "POST" && url.pathname === "/app/pair") return this.pair(request);
     if (request.method === "POST" && url.pathname === "/app/start-block") {
-      if (!(await this.validPwaToken(request))) return json({ error: "Pair this device first" }, 401);
+      if (!(await this.appAuthorized(request))) return json({ error: "Pair this device first" }, 401);
       return this.startBlock(request);
     }
     if (request.method === "POST" && url.pathname === "/app/relabel-active") {
-      if (!(await this.validPwaToken(request))) return json({ error: "Pair this device first" }, 401);
+      if (!(await this.appAuthorized(request))) return json({ error: "Pair this device first" }, 401);
       return this.relabelActive(request);
     }
     if (request.method === "POST" && url.pathname === "/app/stop-active") {
-      if (!(await this.validPwaToken(request))) return json({ error: "Pair this device first" }, 401);
+      if (!(await this.appAuthorized(request))) return json({ error: "Pair this device first" }, 401);
       return this.stopActive(request);
     }
     if (request.method === "GET" && url.pathname === "/app/bootstrap") return this.appBootstrap(request);
@@ -541,6 +541,7 @@ export class CalendarCredential {
     // active placeholder instead of creating a duplicate, while still closing any
     // older active block the retry discovers.
     if (existing) {
+      await this.notifyPush(appActiveEvent(existing));
       return json({ started: domain.code, at: hhmm(now), active: appActiveEvent(existing), closed, retried: true });
     }
 
@@ -558,6 +559,7 @@ export class CalendarCredential {
       }),
     });
 
+    await this.notifyPush(appActiveEvent(created));
     return json({ started: domain.code, at: hhmm(at), active: appActiveEvent(created), closed });
   }
 
@@ -582,6 +584,7 @@ export class CalendarCredential {
         extendedProperties: { private: { ...privateProps(target), ld8: domain.id } },
       }),
     });
+    await this.notifyPush(appActiveEvent(updated));
     return json({ relabeled: domain.code, active: appActiveEvent(updated) });
   }
 
@@ -603,7 +606,9 @@ export class CalendarCredential {
     if (end - new Date(target.start.dateTime) < MIN_BLOCK_MS) {
       return json({ error: "end must fall inside the running block." }, 400);
     }
-    return json({ closed: [await this.closeActiveEvent(calendar.id, target, end)], active: null });
+    const closed = [await this.closeActiveEvent(calendar.id, target, end)];
+    await this.notifyPush(null);
+    return json({ closed, active: null });
   }
 
   async running() {
@@ -636,26 +641,65 @@ export class CalendarCredential {
   }
 
   async appBootstrap(request) {
-    if (!(await this.validPwaToken(request))) return json({ error: "Pair this device first" }, 401);
+    if (!(await this.appAuthorized(request))) return json({ error: "Pair this device first" }, 401);
     const calendar = await this.actualCalendar();
     if (!calendar) return json({ error: `Calendar not found: ${ACTUAL_CALENDARS[0]}` }, 404);
     const today = new Date().toISOString().slice(0, 10);
-    const actualEvents = await this.listEvents(calendar.id, addDays(today, -14), addDays(today, 7));
-    const activeEvent = await this.resolveSingleActiveEvent(calendar.id, new Date());
-    const planMap = await this.planCalendarMap();
-    const planEvents = [];
-    for (const domain of LD8) {
+    // Read in parallel: one at a time this was a dozen Google round trips, and
+    // the phone sat on the old domain for that long after a Watch switch.
+    const [actualEvents, activeEvent, planMap] = await Promise.all([
+      this.listEvents(calendar.id, addDays(today, -14), addDays(today, 7)),
+      this.resolveSingleActiveEvent(calendar.id, new Date()),
+      this.planCalendarMap(),
+    ]);
+    const planLists = await Promise.all(LD8.map(async (domain) => {
       const plan = planMap.get(domain.code);
-      if (!plan) continue;
+      if (!plan) return [];
       const events = await this.listEvents(plan.id, today, addDays(today, 7));
-      planEvents.push(...events.map((event) => appPlanEvent(event, domain.id)).filter(Boolean));
-    }
+      return events.map((event) => appPlanEvent(event, domain.id)).filter(Boolean);
+    }));
+    const planEvents = planLists.flat();
     return json({
       actual: actualEvents.filter((event) => privateProps(event).status !== "active").map(appActualEvent).filter(Boolean),
       active: activeEvent ? appActiveEvent(activeEvent) : null,
       plan: planEvents.sort((a, b) => new Date(a.start) - new Date(b.start)),
       syncedAt: new Date().toISOString(),
     });
+  }
+
+  // Paired phones say which push installation they are, so a switch made from
+  // the Watch can move the phone's 30-minute check-in to the new domain at once
+  // instead of nagging about the old one until the phone app is next opened.
+  async appAuthorized(request) {
+    if (!(await this.validPwaToken(request))) return false;
+    const installationId = request.headers.get("x-push-installation") || "";
+    if (/^[a-z0-9-]{16,80}$/i.test(installationId)) {
+      const known = (await this.state.storage.get("push:installations")) || [];
+      if (!known.includes(installationId)) {
+        await this.state.storage.put("push:installations", [installationId, ...known].slice(0, 3));
+      }
+    }
+    return true;
+  }
+
+  async notifyPush(active) {
+    if (!this.env.PUSH_SIGNAL) return;
+    const installations = (await this.state.storage.get("push:installations")) || [];
+    for (const installationId of installations) {
+      const path = active ? "/v1/start" : "/v1/end";
+      const body = active
+        ? { installationId, active: { id: active.id, categoryId: active.categoryId, start: active.start } }
+        : { installationId, activeId: "" };
+      try {
+        await this.env.PUSH_SIGNAL.fetch(`https://push.internal${path}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      } catch {
+        // A missed check-in move is cosmetic; never fail the switch for it.
+      }
+    }
   }
 
   async validPwaToken(request) {
@@ -1013,7 +1057,7 @@ function appPlanEvent(event, categoryId) {
 function appCors(response) {
   const headers = new Headers(response.headers);
   headers.set("access-control-allow-origin", PWA_ORIGIN);
-  headers.set("access-control-allow-headers", "authorization, content-type");
+  headers.set("access-control-allow-headers", "authorization, content-type, x-push-installation");
   headers.set("access-control-allow-methods", "GET, POST, OPTIONS");
   headers.set("vary", "Origin");
   return new Response(response.body, { status: response.status, headers });

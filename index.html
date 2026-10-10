@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261009-forgot-time" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261010-watch-follow" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -1074,7 +1074,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20261009-forgot-time"></script>
+    <script src="push-config.js?v=20261010-watch-follow"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -1863,6 +1863,7 @@
             method: "POST",
             headers: {
               Authorization: `Bearer ${workerDeviceToken()}`,
+              "x-push-installation": getPushInstallationId(),
               "content-type": "application/json",
             },
             body: JSON.stringify({
@@ -1935,10 +1936,16 @@
         if (refreshInFlight) return true;
         refreshInFlight = true;
         const seqAtRequest = localActiveSeq;
+        // iOS can freeze a request when the app is backgrounded; without a limit
+        // the stuck poll blocked every later one and a Watch switch took minutes
+        // to show up.
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 12000);
         try {
           const response = await fetch(`${calendarWorkerUrl}/app/bootstrap`, {
-            headers: { Authorization: `Bearer ${token}` },
+            headers: { Authorization: `Bearer ${token}`, "x-push-installation": getPushInstallationId() },
             cache: "no-store",
+            signal: controller.signal,
           });
           if (response.status === 401) {
             localStorage.removeItem(workerDeviceTokenKey);
@@ -1959,6 +1966,7 @@
           els.watchSyncStatus.textContent = "Reconnect later";
           return false;
         } finally {
+          window.clearTimeout(timeout);
           refreshInFlight = false;
         }
       }
@@ -2320,7 +2328,11 @@
         try {
           const response = await fetch(`${calendarWorkerUrl}/app/relabel-active`, {
             method: "POST",
-            headers: { Authorization: `Bearer ${workerDeviceToken()}`, "content-type": "application/json" },
+            headers: {
+              Authorization: `Bearer ${workerDeviceToken()}`,
+              "content-type": "application/json",
+              "x-push-installation": getPushInstallationId(),
+            },
             body: JSON.stringify({ blockId: active.id, domain: active.categoryId }),
             cache: "no-store",
             signal: controller.signal,
