@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261010-watch-follow" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261012-no-stale-alerts" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -845,8 +845,8 @@
             <span class="status-chip warn checkin-signal" id="activeSignal" hidden>30m check-in</span>
           </div>
           <div class="relabel-actions" id="relabelActions" hidden>
-            <button class="secondary-button relabel-button" id="wrongDomainButton" type="button">กดผิด</button>
-            <button class="secondary-button relabel-button" id="forgotTapButton" type="button">ลืมกด</button>
+            <button class="secondary-button relabel-button" id="wrongDomainButton" type="button">Wrong tap</button>
+            <button class="secondary-button relabel-button" id="forgotTapButton" type="button">Forgot to tap</button>
           </div>
         </section>
 
@@ -1021,8 +1021,8 @@
         <button class="round-button" id="closeRelabelSheetButton" type="button" aria-label="Close">&#215;</button>
       </div>
       <div class="relabel-when" id="relabelWhen" hidden>
-        <span class="label">เริ่มทำตอนกี่โมง?</span>
-        <input id="relabelFrom" type="time" aria-label="เวลาที่เริ่มจริง" />
+        <span class="label">Started at</span>
+        <input id="relabelFrom" type="time" aria-label="When it really started" />
       </div>
       <p class="relabel-hint" id="relabelHint"></p>
       <div class="domain-grid" id="relabelGrid"></div>
@@ -1074,7 +1074,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20261010-watch-follow"></script>
+    <script src="push-config.js?v=20261012-no-stale-alerts"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -2185,8 +2185,8 @@
         els.relabelFrom.value = relabelPickedAt ? toTimeInput(relabelPickedAt) : "";
         const current = categoryShortLabel(state.active.categoryId);
         const startedAt = formatTime(state.active.start);
-        els.relabelSheetLabel.textContent = mode === "wrong" ? "กดผิด - เปลี่ยนเป็นอันไหน?" : "ลืมกด - ไปทำอะไรมา?";
-        els.relabelSheetTitle.textContent = `${current} เริ่ม ${startedAt}`;
+        els.relabelSheetLabel.textContent = mode === "wrong" ? "Wrong tap - which domain is it?" : "Forgot to tap - what were you doing?";
+        els.relabelSheetTitle.textContent = `${current} since ${startedAt}`;
         els.relabelWhen.hidden = mode !== "forgot";
         els.relabelGrid.innerHTML = "";
         categories.forEach((category) => {
@@ -2226,13 +2226,13 @@
           button.classList.toggle("active", same);
         });
         if (relabelMode === "wrong") {
-          els.relabelHint.textContent = `กด Domain ที่ถูก - ${current} จะถูกเปลี่ยน เวลาเริ่ม ${formatTime(state.active.start)} เหมือนเดิม`;
+          els.relabelHint.textContent = `Tap the right domain - it replaces ${current}, start stays ${formatTime(state.active.start)}.`;
         } else if (!relabelPickedAt) {
-          els.relabelHint.textContent = "เลือกเวลาที่เริ่มทำก่อน แล้วกด Domain ที่ทำ";
+          els.relabelHint.textContent = "Set when it started, then tap the domain.";
         } else if (!forgotTimeValid(relabelPickedAt)) {
-          els.relabelHint.textContent = `เวลาต้องอยู่หลัง ${formatTime(state.active.start)} และไม่เกินตอนนี้`;
+          els.relabelHint.textContent = `Pick a time after ${formatTime(state.active.start)} and not later than now.`;
         } else {
-          els.relabelHint.textContent = `${current} จบ ${formatTime(relabelPickedAt)} แล้ว Domain ที่กดจะเริ่ม ${formatTime(relabelPickedAt)} และวิ่งต่อ`;
+          els.relabelHint.textContent = `${current} ends at ${formatTime(relabelPickedAt)}; the domain you tap runs from then.`;
         }
       }
 
@@ -2375,7 +2375,11 @@
         saveState();
         syncHomeScreenBadge();
         logAction(`30m check-in ${dueCheckins} ${categoryShortLabel(state.active.categoryId)}`);
-        if (!backgroundPushReady) notifyThirtyMinuteCheckin(state.active, dueCheckins);
+        // Only alert for a check-in that is due right now. One that came due while
+        // the app was closed is old news on opening it - and the local block may
+        // itself be stale until the Watch state loads.
+        const dueAt = new Date(state.active.start).getTime() + dueCheckins * thirtyMinuteSignalMs;
+        if (!backgroundPushReady && Date.now() - dueAt < 60 * 1000) notifyThirtyMinuteCheckin(state.active, dueCheckins);
         return true;
       }
 

@@ -70,7 +70,15 @@ export class TimeBlockSignal {
   async start({ active }, origin) {
     if (!isActiveBlock(active)) return json({ error: "Invalid active block" }, 400, origin);
     const current = await this.state.storage.get("active");
-    const reminderCount = current?.id === active.id ? current.reminderCount || 0 : 0;
+    // A phone opening with a stale block (the Watch switched since) must not
+    // replace the newer one the calendar worker already registered.
+    if (current && current.id !== active.id && new Date(active.start) < new Date(current.start)) {
+      return json({ ok: true, ignored: "older than current", reminderCount: current.reminderCount || 0 }, 200, origin);
+    }
+    // A block seen for the first time counts its past check-ins as already sent,
+    // so registering it never fires a catch-up alert for a time that has passed.
+    const elapsedCount = Math.max(0, Math.floor((Date.now() - new Date(active.start).getTime()) / checkinIntervalMs));
+    const reminderCount = current?.id === active.id ? current.reminderCount || 0 : elapsedCount;
     const next = { id: active.id, categoryId: active.categoryId, start: active.start, reminderCount };
     await this.state.storage.put("active", next);
     await this.scheduleNextCheckin(next);

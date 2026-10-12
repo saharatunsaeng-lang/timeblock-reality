@@ -1,9 +1,9 @@
-const cacheName = "timeblock-reality-v43-watch-follow";
+const cacheName = "timeblock-reality-v44-no-stale-alerts";
 const assets = [
-  "./?v=20261010-watch-follow",
-  "index.html?v=20261010-watch-follow",
-  "manifest.webmanifest?v=20261010-watch-follow",
-  "push-config.js?v=20261010-watch-follow",
+  "./?v=20261012-no-stale-alerts",
+  "index.html?v=20261012-no-stale-alerts",
+  "manifest.webmanifest?v=20261012-no-stale-alerts",
+  "push-config.js?v=20261012-no-stale-alerts",
   "icon.svg",
 ];
 
@@ -66,7 +66,7 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of clients) {
         if (client.url.startsWith(self.location.origin) && "focus" in client) return client.focus();
       }
-      return self.clients.openWindow("./?v=20261010-watch-follow");
+      return self.clients.openWindow("./?v=20261012-no-stale-alerts");
     }),
   );
 });
