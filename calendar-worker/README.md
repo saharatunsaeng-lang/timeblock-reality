@@ -21,6 +21,12 @@ new block rather than treating the tap as a no-op. The paired PWA sends a stable
 `blockId`, so retrying after a lost network response cannot create another active
 placeholder.
 
+`Forgot to tap` can also move the current block's start earlier by selecting its
+existing domain. `POST /app/relabel-active` accepts an optional ISO `start` for
+that same domain, up to 12 hours back. It patches the existing event and block ID;
+it rejects overlaps with saved Calendar events and a block that has already ended.
+Without `start`, the existing Wrong tap behavior is unchanged.
+
 ## One-time production setup
 
 1. Deploy once to obtain the `workers.dev` URL.

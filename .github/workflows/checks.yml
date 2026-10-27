@@ -18,5 +18,7 @@ jobs:
       # Syntax, temporal dead zone, worker routing, and one build marker everywhere.
       - run: node scripts/check.mjs
 
+      - run: node --test scripts/forgot-tap.test.mjs
+
       - run: npm test
         working-directory: calendar-worker

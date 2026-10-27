@@ -3,12 +3,16 @@ import test from "node:test";
 
 import { CalendarCredential } from "../src/index.js";
 
-function setup(active) {
+function setup(active, pages = [{ items: [] }]) {
   const calls = [];
   const credential = new CalendarCredential({ storage: {} }, {});
   credential.actualCalendar = async () => ({ id: "actual" });
   credential.findActiveEvents = async () => active;
   credential.google = async (path, init = {}) => {
+    if (!init.method) {
+      calls.push({ path, method: "GET" });
+      return pages.shift() || { items: [] };
+    }
     calls.push({ path, method: init.method, body: JSON.parse(init.body) });
     const target = active.find((event) => path.endsWith(`/${event.id}`));
     const body = JSON.parse(init.body);
@@ -50,4 +54,51 @@ test("refuses a block that is no longer running", async () => {
 test("rejects an unknown domain", async () => {
   const { relabel } = setup([running]);
   assert.equal((await relabel({ blockId: "b1", domain: "zz" })).status, 400);
+});
+
+function recentRunning() {
+  return { ...running, start: { dateTime: new Date(Date.now() - 60 * 60 * 1000).toISOString() } };
+}
+
+test("Forgot to tap moves the same running block earlier and retries without duplicating it", async () => {
+  const target = recentRunning();
+  const at = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  const { calls, relabel } = setup([target]);
+  const response = await relabel({ blockId: "b1", domain: "fn", start: at });
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.active.id, "b1");
+  assert.equal(result.active.start, at);
+  assert.equal(result.active.categoryId, "fn");
+  assert.deepEqual(calls.map(call => call.method), ["GET", "PATCH"]);
+  assert.ok(calls[1].path.endsWith("/ev1"));
+  target.start.dateTime = at;
+  assert.equal((await relabel({ blockId: "b1", domain: "fn", start: at })).status, 200);
+  assert.equal(calls.at(-1).method, "PATCH");
+});
+
+test("earlier start rejects invalid times, a later start, and a different domain without writing", async () => {
+  for (const payload of [
+    { start: "invalid" },
+    { start: new Date(Date.now() + 60000).toISOString() },
+    { start: new Date(Date.now() - 30 * 60000).toISOString() },
+    { start: new Date(Date.now() - 13 * 3600000).toISOString() },
+    { start: new Date(Date.now() - 2 * 3600000).toISOString(), domain: "cm" },
+  ]) {
+    const { calls, relabel } = setup([recentRunning()]);
+    assert.equal((await relabel({ blockId: "b1", domain: "fn", ...payload })).status, 400);
+    assert.equal(calls.length, 0);
+  }
+});
+
+test("earlier start refuses an overlap found on a later Calendar page without writing", async () => {
+  const { calls, relabel } = setup([recentRunning()], [
+    { items: [], nextPageToken: "next-page" },
+    { items: [{ id: "previous-actual" }] },
+  ]);
+  const response = await relabel({ blockId: "b1", domain: "fn", start: new Date(Date.now() - 2 * 3600000).toISOString() });
+  assert.equal(response.status, 422);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(call => call.method === "GET"));
+  assert.ok(calls[1].path.includes("pageToken=next-page"));
 });

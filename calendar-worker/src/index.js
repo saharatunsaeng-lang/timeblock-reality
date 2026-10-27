@@ -564,8 +564,8 @@ export class CalendarCredential {
   }
 
   // A mistapped domain is corrected on the same block: start time and blockId
-  // stay, only the domain changes. Switching instead would record the wrong
-  // domain as a finished block.
+  // stay, only the domain changes. An optional earlier start corrects a late tap
+  // on the same domain, after checking that the added time is unoccupied.
   async relabelActive(request) {
     const body = (await readJson(request)) || {};
     const domain = resolveDomain(String(body.domain || ""));
@@ -577,10 +577,32 @@ export class CalendarCredential {
       .find((event) => privateProps(event).blockId === blockId);
     // Already closed or replaced by a newer tap: nothing running to relabel.
     if (!target) return json({ error: "That block is no longer running." }, 409);
+    let correctedStart = null;
+    if (body.start !== undefined) {
+      correctedStart = new Date(body.start);
+      const now = new Date();
+      const oldStart = new Date(target.start.dateTime);
+      if (!Number.isFinite(correctedStart.getTime()) || correctedStart > oldStart || correctedStart > now
+        || now - correctedStart > MAX_BACKDATE_MS || domain.id !== privateProps(target).ld8) {
+        return json({ error: "Choose an earlier start within the last 12 hours for the running domain." }, 400);
+      }
+      if (correctedStart < oldStart) {
+        const params = new URLSearchParams({ timeMin: correctedStart.toISOString(), timeMax: oldStart.toISOString(), singleEvents: "true", maxResults: "2500" });
+        let page;
+        do {
+          page = await this.google(`/calendars/${encodeURIComponent(calendar.id)}/events?${params}`);
+          if ((page.items || []).some((event) => event.status !== "cancelled" && event.id !== target.id)) {
+            return json({ error: "That start overlaps a saved block. Choose a later time." }, 422);
+          }
+          if (page.nextPageToken) params.set("pageToken", page.nextPageToken);
+        } while (page.nextPageToken);
+      }
+    }
     const updated = await this.google(`/calendars/${encodeURIComponent(calendar.id)}/events/${encodeURIComponent(target.id)}`, {
       method: "PATCH",
       body: JSON.stringify({
         summary: `Active: ${domain.code}`,
+        ...(correctedStart ? { start: { dateTime: correctedStart.toISOString(), timeZone: "Asia/Bangkok" } } : {}),
         extendedProperties: { private: { ...privateProps(target), ld8: domain.id } },
       }),
     });

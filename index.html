@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261027-forgot-same-domain" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261027-forgot-start-correction" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -1074,7 +1074,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20261027-forgot-same-domain"></script>
+    <script src="push-config.js?v=20261027-forgot-start-correction"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -2142,6 +2142,8 @@
 
       function renderActive() {
         const locked = isCaptureLocked();
+        els.forgotTapButton.disabled = locked;
+        els.wrongDomainButton.disabled = locked;
         const reminderCount = getReminderCount(state.active);
         const hasCheckin = reminderCount > 0;
         els.nowCard.classList.toggle("has-checkin", hasCheckin);
@@ -2213,16 +2215,21 @@
 
       function forgotTimeValid(at) {
         if (!state.active || !at) return false;
-        return at - new Date(state.active.start) >= 60 * 1000 && at <= new Date();
+        const now = new Date();
+        const start = new Date(state.active.start);
+        if (at > now || now - at > 12 * 60 * 60 * 1000) return false;
+        if (at < start) return !state.actual.some((block) => new Date(block.start) < start && new Date(block.end) > at);
+        return at - start >= 60 * 1000;
       }
 
       function renderRelabelSheet() {
         if (!state.active) return;
         const current = categoryShortLabel(state.active.categoryId);
-        const ready = relabelMode === "wrong" || forgotTimeValid(relabelPickedAt);
+        const movesStart = relabelMode === "forgot" && relabelPickedAt < new Date(state.active.start);
+        const ready = !isCaptureLocked() && (relabelMode === "wrong" || forgotTimeValid(relabelPickedAt));
         [...els.relabelGrid.children].forEach((button) => {
           const same = button.dataset.category === state.active.categoryId;
-          button.disabled = !ready || (relabelMode === "wrong" && same);
+          button.disabled = !ready || (relabelMode === "wrong" && same) || (movesStart && !same);
           button.classList.toggle("active", same);
         });
         if (relabelMode === "wrong") {
@@ -2230,7 +2237,9 @@
         } else if (!relabelPickedAt) {
           els.relabelHint.textContent = "Set when it started, then tap the domain.";
         } else if (!forgotTimeValid(relabelPickedAt)) {
-          els.relabelHint.textContent = `Pick a time after ${formatTime(state.active.start)} and not later than now.`;
+          els.relabelHint.textContent = "Pick a time within the last 12 hours, up to now, without overlapping a saved block. To split, leave at least a minute after Started.";
+        } else if (movesStart) {
+          els.relabelHint.textContent = `Tap ${current} to move this block's start to ${formatTime(relabelPickedAt)}. It stays one running block.`;
         } else {
           els.relabelHint.textContent = `${current} ends at ${formatTime(relabelPickedAt)}; the domain you tap runs from then.`;
         }
@@ -2243,8 +2252,89 @@
         }
         if (!forgotTimeValid(relabelPickedAt)) return;
         const at = relabelPickedAt;
+        if (at < new Date(state.active.start)) {
+          if (categoryId === state.active.categoryId) return correctActiveStart(at);
+          return;
+        }
         closeRelabelSheet();
         startQuickBlock(categoryId, at);
+      }
+
+      // An earlier start corrects the existing block instead of closing it at a
+      // negative duration. Save remotely first so failed writes cannot look saved.
+      async function correctActiveStart(at) {
+        if (isCaptureLocked() || !forgotTimeValid(at)) return;
+        const active = { ...state.active };
+        localActionInFlight = true;
+        renderRelabelSheet();
+        els.relabelHint.textContent = "Saving start time...";
+        render();
+        try {
+          if (hasPairedWatchWorker()) {
+            const response = await fetch(`${calendarWorkerUrl}/app/relabel-active`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${workerDeviceToken()}`,
+                "content-type": "application/json",
+                "x-push-installation": getPushInstallationId(),
+              },
+              body: JSON.stringify({ blockId: active.id, domain: active.categoryId, start: at.toISOString() }),
+              signal: AbortSignal.timeout(12000),
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || "Start time could not be saved. Try again.");
+            if (result.active?.id !== active.id || new Date(result.active.start).getTime() !== at.getTime()) {
+              throw new Error("Start time was not confirmed. Try again.");
+            }
+          } else if (state.google.connected || active.googleEventId) {
+            await ensureGoogleReady();
+            const event = active.googleEventId
+              ? await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events/${encodeURIComponent(active.googleEventId)}`)
+              : await findDirectEventByBlockId(active.id);
+            if (!event) throw new Error("The running block has not synced yet. Try again after syncing.");
+            const props = event.extendedProperties?.private || {};
+            if (props.status !== "active" || props.blockId !== active.id || props.ld8 !== active.categoryId
+              || at > new Date(event.start.dateTime)) throw new Error("The running block changed. Reopen Forgot to tap.");
+            // Calendar is authoritative; a different device may have saved a block
+            // that this device's local history has not received yet.
+            if (at < new Date(event.start.dateTime)) {
+              const params = new URLSearchParams({ timeMin: at.toISOString(), timeMax: event.start.dateTime, singleEvents: "true", maxResults: "2500" });
+              let page;
+              do {
+                page = await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events?${params}`);
+                if ((page.items || []).some((item) => item.status !== "cancelled" && item.id !== event.id)) {
+                  throw new Error("That start overlaps a saved block. Choose a later time.");
+                }
+                if (page.nextPageToken) params.set("pageToken", page.nextPageToken);
+              } while (page.nextPageToken);
+            }
+            const updated = await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events/${encodeURIComponent(event.id)}`, {
+              method: "PATCH",
+              body: JSON.stringify({ start: { dateTime: at.toISOString(), timeZone: "Asia/Bangkok" } }),
+            });
+            if (new Date(updated.start?.dateTime).getTime() !== at.getTime()) throw new Error("Start time was not confirmed. Try again.");
+          }
+          if (state.active?.id !== active.id) throw new Error("The running block changed. Reopen Forgot to tap.");
+          state.active.start = at.toISOString();
+          state.active.reminderCount = Math.floor((Date.now() - at.getTime()) / thirtyMinuteSignalMs);
+          localActiveSeq += 1;
+          saveState();
+          logAction(`correct start ${categoryShortLabel(active.categoryId)} to ${formatTime(at)}`);
+          closeRelabelSheet();
+          syncHomeScreenBadge();
+          syncBackgroundPushState({ keepalive: true });
+          scheduleActiveSignal();
+          updateSyncStatus("Start time updated");
+        } catch (error) {
+          els.relabelHint.textContent = readableError(error);
+        } finally {
+          localActionInFlight = false;
+          render();
+          // Keep any save error visible while re-enabling retry.
+          const hint = els.relabelHint.textContent;
+          renderRelabelSheet();
+          els.relabelHint.textContent = hint;
+        }
       }
 
       function closeRelabelSheet() {
