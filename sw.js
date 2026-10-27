@@ -1,9 +1,9 @@
-const cacheName = "timeblock-reality-v44-no-stale-alerts";
+const cacheName = "timeblock-reality-v45-forgot-same-domain";
 const assets = [
-  "./?v=20261012-no-stale-alerts",
-  "index.html?v=20261012-no-stale-alerts",
-  "manifest.webmanifest?v=20261012-no-stale-alerts",
-  "push-config.js?v=20261012-no-stale-alerts",
+  "./?v=20261027-forgot-same-domain",
+  "index.html?v=20261027-forgot-same-domain",
+  "manifest.webmanifest?v=20261027-forgot-same-domain",
+  "push-config.js?v=20261027-forgot-same-domain",
   "icon.svg",
 ];
 
@@ -66,7 +66,7 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of clients) {
         if (client.url.startsWith(self.location.origin) && "focus" in client) return client.focus();
       }
-      return self.clients.openWindow("./?v=20261012-no-stale-alerts");
+      return self.clients.openWindow("./?v=20261027-forgot-same-domain");
     }),
   );
 });
