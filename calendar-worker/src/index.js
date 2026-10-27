@@ -565,7 +565,7 @@ export class CalendarCredential {
 
   // A mistapped domain is corrected on the same block: start time and blockId
   // stay, only the domain changes. An optional earlier start corrects a late tap
-  // on the same domain, after checking that the added time is unoccupied.
+  // with any domain, after checking that the added time is unoccupied.
   async relabelActive(request) {
     const body = (await readJson(request)) || {};
     const domain = resolveDomain(String(body.domain || ""));
@@ -583,8 +583,8 @@ export class CalendarCredential {
       const now = new Date();
       const oldStart = new Date(target.start.dateTime);
       if (!Number.isFinite(correctedStart.getTime()) || correctedStart > oldStart || correctedStart > now
-        || now - correctedStart > MAX_BACKDATE_MS || domain.id !== privateProps(target).ld8) {
-        return json({ error: "Choose an earlier start within the last 12 hours for the running domain." }, 400);
+        || now - correctedStart > MAX_BACKDATE_MS) {
+        return json({ error: "Choose an earlier start within the last 12 hours." }, 400);
       }
       if (correctedStart < oldStart) {
         const params = new URLSearchParams({ timeMin: correctedStart.toISOString(), timeMax: oldStart.toISOString(), singleEvents: "true", maxResults: "2500" });

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261027-forgot-start-correction" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261027-forgot-any-domain" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -1074,7 +1074,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20261027-forgot-start-correction"></script>
+    <script src="push-config.js?v=20261027-forgot-any-domain"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -2229,7 +2229,7 @@
         const ready = !isCaptureLocked() && (relabelMode === "wrong" || forgotTimeValid(relabelPickedAt));
         [...els.relabelGrid.children].forEach((button) => {
           const same = button.dataset.category === state.active.categoryId;
-          button.disabled = !ready || (relabelMode === "wrong" && same) || (movesStart && !same);
+          button.disabled = !ready || (relabelMode === "wrong" && same);
           button.classList.toggle("active", same);
         });
         if (relabelMode === "wrong") {
@@ -2239,7 +2239,7 @@
         } else if (!forgotTimeValid(relabelPickedAt)) {
           els.relabelHint.textContent = "Pick a time within the last 12 hours, up to now, without overlapping a saved block. To split, leave at least a minute after Started.";
         } else if (movesStart) {
-          els.relabelHint.textContent = `Tap ${current} to move this block's start to ${formatTime(relabelPickedAt)}. It stays one running block.`;
+          els.relabelHint.textContent = `Tap a domain to set this block's domain and start to ${formatTime(relabelPickedAt)}. It stays one running block.`;
         } else {
           els.relabelHint.textContent = `${current} ends at ${formatTime(relabelPickedAt)}; the domain you tap runs from then.`;
         }
@@ -2253,8 +2253,7 @@
         if (!forgotTimeValid(relabelPickedAt)) return;
         const at = relabelPickedAt;
         if (at < new Date(state.active.start)) {
-          if (categoryId === state.active.categoryId) return correctActiveStart(at);
-          return;
+          return correctActiveStart(at, categoryId);
         }
         closeRelabelSheet();
         startQuickBlock(categoryId, at);
@@ -2262,8 +2261,8 @@
 
       // An earlier start corrects the existing block instead of closing it at a
       // negative duration. Save remotely first so failed writes cannot look saved.
-      async function correctActiveStart(at) {
-        if (isCaptureLocked() || !forgotTimeValid(at)) return;
+      async function correctActiveStart(at, categoryId) {
+        if (isCaptureLocked() || !forgotTimeValid(at) || !categories.some((item) => item.id === categoryId)) return;
         const active = { ...state.active };
         localActionInFlight = true;
         renderRelabelSheet();
@@ -2278,12 +2277,12 @@
                 "content-type": "application/json",
                 "x-push-installation": getPushInstallationId(),
               },
-              body: JSON.stringify({ blockId: active.id, domain: active.categoryId, start: at.toISOString() }),
+              body: JSON.stringify({ blockId: active.id, domain: categoryId, start: at.toISOString() }),
               signal: AbortSignal.timeout(12000),
             });
             const result = await response.json();
             if (!response.ok) throw new Error(result.error || "Start time could not be saved. Try again.");
-            if (result.active?.id !== active.id || new Date(result.active.start).getTime() !== at.getTime()) {
+            if (result.active?.id !== active.id || result.active.categoryId !== categoryId || new Date(result.active.start).getTime() !== at.getTime()) {
               throw new Error("Start time was not confirmed. Try again.");
             }
           } else if (state.google.connected || active.googleEventId) {
@@ -2310,21 +2309,28 @@
             }
             const updated = await gcalFetch(`/calendars/${encodeURIComponent(state.google.actualCalendarId)}/events/${encodeURIComponent(event.id)}`, {
               method: "PATCH",
-              body: JSON.stringify({ start: { dateTime: at.toISOString(), timeZone: "Asia/Bangkok" } }),
+              body: JSON.stringify({
+                summary: `Active: ${categoryShortLabel(categoryId)}`,
+                start: { dateTime: at.toISOString(), timeZone: "Asia/Bangkok" },
+                extendedProperties: { private: { ...props, ld8: categoryId } },
+              }),
             });
-            if (new Date(updated.start?.dateTime).getTime() !== at.getTime()) throw new Error("Start time was not confirmed. Try again.");
+            if (new Date(updated.start?.dateTime).getTime() !== at.getTime() || updated.extendedProperties?.private?.ld8 !== categoryId) {
+              throw new Error("Domain and start time were not confirmed. Try again.");
+            }
           }
           if (state.active?.id !== active.id) throw new Error("The running block changed. Reopen Forgot to tap.");
           state.active.start = at.toISOString();
+          state.active.categoryId = categoryId;
           state.active.reminderCount = Math.floor((Date.now() - at.getTime()) / thirtyMinuteSignalMs);
           localActiveSeq += 1;
           saveState();
-          logAction(`correct start ${categoryShortLabel(active.categoryId)} to ${formatTime(at)}`);
+          logAction(`correct ${categoryShortLabel(active.categoryId)} to ${categoryShortLabel(categoryId)} from ${formatTime(at)}`);
           closeRelabelSheet();
           syncHomeScreenBadge();
           syncBackgroundPushState({ keepalive: true });
           scheduleActiveSignal();
-          updateSyncStatus("Start time updated");
+          updateSyncStatus("Domain and start time updated");
         } catch (error) {
           els.relabelHint.textContent = readableError(error);
         } finally {

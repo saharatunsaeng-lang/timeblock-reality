@@ -77,13 +77,12 @@ test("Forgot to tap moves the same running block earlier and retries without dup
   assert.equal(calls.at(-1).method, "PATCH");
 });
 
-test("earlier start rejects invalid times, a later start, and a different domain without writing", async () => {
+test("earlier start rejects invalid times and a later start without writing", async () => {
   for (const payload of [
     { start: "invalid" },
     { start: new Date(Date.now() + 60000).toISOString() },
     { start: new Date(Date.now() - 30 * 60000).toISOString() },
     { start: new Date(Date.now() - 13 * 3600000).toISOString() },
-    { start: new Date(Date.now() - 2 * 3600000).toISOString(), domain: "cm" },
   ]) {
     const { calls, relabel } = setup([recentRunning()]);
     assert.equal((await relabel({ blockId: "b1", domain: "fn", ...payload })).status, 400);
@@ -101,4 +100,19 @@ test("earlier start refuses an overlap found on a later Calendar page without wr
   assert.equal(calls.length, 2);
   assert.ok(calls.every(call => call.method === "GET"));
   assert.ok(calls[1].path.includes("pageToken=next-page"));
+});
+
+test("earlier start accepts every LD8 domain and updates the existing event", async () => {
+  for (const domain of ["bd", "sp", "mm", "rs", "cm", "fn", "ct", "ls"]) {
+    const { calls, relabel } = setup([recentRunning()]);
+    const start = new Date(Date.now() - 2 * 3600000).toISOString();
+    const response = await relabel({ blockId: "b1", domain, start });
+    assert.equal(response.status, 200, domain);
+    const result = await response.json();
+    assert.equal(result.active.id, "b1");
+    assert.equal(result.active.start, start);
+    assert.equal(result.active.categoryId, domain);
+    assert.equal(calls.at(-1).method, "PATCH");
+    assert.ok(calls.at(-1).path.endsWith("/ev1"));
+  }
 });

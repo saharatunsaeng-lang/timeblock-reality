@@ -13,10 +13,10 @@ const source = names.map(name => {
 function setup({ worker = false, response, actual = [] } = {}) {
   const originalStart = new Date(Date.now() - 3600000).toISOString();
   const earlier = new Date(Date.now() - 7200000);
-  const buttons = ['fn', 'cm'].map(category => ({ dataset: { category }, classList: { toggle() {} } }));
+  const buttons = ['fn', 'cm', 'bd', 'sp', 'mm', 'rs', 'ct', 'ls'].map(category => ({ dataset: { category }, classList: { toggle() {} } }));
   const calls = [];
   const ctx = vm.createContext({
-    Date, AbortSignal, URLSearchParams,
+    Date, AbortSignal, URLSearchParams, categories: ['bd', 'sp', 'mm', 'rs', 'cm', 'fn', 'ct', 'ls'].map(id => ({ id })),
     state: { active: { id: 'b1', categoryId: 'fn', start: originalStart }, actual, google: { connected: false } },
     relabelMode: 'forgot', relabelPickedAt: earlier, localActionInFlight: false, localActiveSeq: 0,
     thirtyMinuteSignalMs: 1800000, calendarWorkerUrl: 'https://worker.test',
@@ -34,11 +34,11 @@ function setup({ worker = false, response, actual = [] } = {}) {
   return { ctx, buttons, calls, earlier, originalStart };
 }
 
-test('earlier time enables only the running domain and corrects its existing block', async () => {
+test('earlier time enables every domain and can correct the existing domain', async () => {
   const { ctx, buttons, earlier } = setup();
   vm.runInContext('renderRelabelSheet()', ctx);
   assert.equal(buttons[0].disabled, false);
-  assert.equal(buttons[1].disabled, true);
+  assert.ok(buttons.every(button => !button.disabled));
   await vm.runInContext('chooseRelabelDomain("fn")', ctx);
   assert.equal(ctx.state.active.id, 'b1');
   assert.equal(ctx.state.active.start, earlier.toISOString());
@@ -91,7 +91,7 @@ test('paired correction sends the existing id and saves the acknowledged start',
   const { ctx, earlier, calls } = setup({ worker: true });
   ctx.fetch = async (url, init) => {
     calls.push(JSON.parse(init.body));
-    return { ok: true, json: async () => ({ active: { id: 'b1', start: earlier.toISOString() } }) };
+    return { ok: true, json: async () => ({ active: { id: 'b1', categoryId: 'fn', start: earlier.toISOString() } }) };
   };
   await vm.runInContext('chooseRelabelDomain("fn")', ctx);
   assert.deepEqual(calls[0], { blockId: 'b1', domain: 'fn', start: earlier.toISOString() });
@@ -99,7 +99,7 @@ test('paired correction sends the existing id and saves the acknowledged start',
   assert.equal(ctx.closed, true);
 });
 
-test('direct Calendar correction verifies the active identity and patches only start', async () => {
+test('direct Calendar correction verifies the active identity and patches domain and start', async () => {
   const { ctx, earlier, originalStart } = setup();
   ctx.state.google = { connected: true, actualCalendarId: 'actual' };
   ctx.state.active.googleEventId = 'ev1';
@@ -107,14 +107,14 @@ test('direct Calendar correction verifies the active identity and patches only s
   const requests = [];
   ctx.gcalFetch = async (path, init = {}) => {
     requests.push({ path, ...init });
-    if (init.method === 'PATCH') return { start: { dateTime: earlier.toISOString() } };
+    if (init.method === 'PATCH') return { start: { dateTime: earlier.toISOString() }, extendedProperties: { private: { ld8: 'cm' } } };
     if (path.includes('/events?')) return { items: [] };
     return { id: 'ev1', start: { dateTime: originalStart }, extendedProperties: { private: { status: 'active', blockId: 'b1', ld8: 'fn' } } };
   };
-  await vm.runInContext('chooseRelabelDomain("fn")', ctx);
+  await vm.runInContext('chooseRelabelDomain("cm")', ctx);
   assert.equal(ctx.state.active.start, earlier.toISOString());
   assert.equal(requests.length, 3);
-  assert.deepEqual(JSON.parse(requests[2].body), { start: { dateTime: earlier.toISOString(), timeZone: 'Asia/Bangkok' } });
+  assert.deepEqual(JSON.parse(requests[2].body), { summary: 'Active: cm', start: { dateTime: earlier.toISOString(), timeZone: 'Asia/Bangkok' }, extendedProperties: { private: { status: 'active', blockId: 'b1', ld8: 'cm' } } });
 });
 
 test('direct Calendar correction cannot rewrite a block closed on another device', async () => {
@@ -127,4 +127,37 @@ test('direct Calendar correction cannot rewrite a block closed on another device
   assert.equal(ctx.state.active.start, originalStart);
   assert.equal(ctx.closed, undefined);
   assert.match(ctx.els.relabelHint.textContent, /block changed/);
+});
+
+test('earlier time accepts every domain locally without creating a completed block', async () => {
+  for (const domain of ['bd', 'sp', 'mm', 'rs', 'cm', 'fn', 'ct', 'ls']) {
+    const { ctx, earlier } = setup();
+    ctx.selected = domain;
+    await vm.runInContext('chooseRelabelDomain(selected)', ctx);
+    assert.equal(ctx.state.active.id, 'b1');
+    assert.equal(ctx.state.active.categoryId, domain);
+    assert.equal(ctx.state.active.start, earlier.toISOString());
+    assert.equal(ctx.state.actual.length, 0);
+    assert.equal(ctx.closed, true);
+  }
+});
+
+test('earlier time sends another domain to the worker and requires that domain in its acknowledgement', async () => {
+  const { ctx, earlier } = setup({ worker: true });
+  ctx.fetch = async (url, init) => {
+    assert.equal(JSON.parse(init.body).domain, 'cm');
+    return { ok: true, json: async () => ({ active: { id: 'b1', categoryId: 'cm', start: earlier.toISOString() } }) };
+  };
+  await vm.runInContext('chooseRelabelDomain("cm")', ctx);
+  assert.equal(ctx.state.active.categoryId, 'cm');
+  assert.equal(ctx.state.active.start, earlier.toISOString());
+});
+
+test('a worker that acknowledges the old domain cannot claim a domain correction succeeded', async () => {
+  const { ctx, earlier, originalStart } = setup({ worker: true });
+  ctx.fetch = async () => ({ ok: true, json: async () => ({ active: { id: 'b1', categoryId: 'fn', start: earlier.toISOString() } }) });
+  await vm.runInContext('chooseRelabelDomain("cm")', ctx);
+  assert.equal(ctx.state.active.categoryId, 'fn');
+  assert.equal(ctx.state.active.start, originalStart);
+  assert.equal(ctx.closed, undefined);
 });

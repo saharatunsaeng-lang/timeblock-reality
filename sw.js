@@ -1,9 +1,9 @@
-const cacheName = "timeblock-reality-v46-forgot-start-correction";
+const cacheName = "timeblock-reality-v47-forgot-any-domain";
 const assets = [
-  "./?v=20261027-forgot-start-correction",
-  "index.html?v=20261027-forgot-start-correction",
-  "manifest.webmanifest?v=20261027-forgot-start-correction",
-  "push-config.js?v=20261027-forgot-start-correction",
+  "./?v=20261027-forgot-any-domain",
+  "index.html?v=20261027-forgot-any-domain",
+  "manifest.webmanifest?v=20261027-forgot-any-domain",
+  "push-config.js?v=20261027-forgot-any-domain",
   "icon.svg",
 ];
 
@@ -66,7 +66,7 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of clients) {
         if (client.url.startsWith(self.location.origin) && "focus" in client) return client.focus();
       }
-      return self.clients.openWindow("./?v=20261027-forgot-start-correction");
+      return self.clients.openWindow("./?v=20261027-forgot-any-domain");
     }),
   );
 });
