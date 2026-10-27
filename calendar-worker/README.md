@@ -27,6 +27,19 @@ that same domain, up to 12 hours back. It patches the existing event and block I
 it rejects overlaps with saved Calendar events and a block that has already ended.
 Without `start`, the existing Wrong tap behavior is unchanged.
 
+## Production source parity (2026-10-27)
+
+Production version `e102a4bc-65af-4f32-9ed6-e6fb4f7412c3` already included
+Sheets writes, Gmail reads, and delete-range routes absent from committed source.
+The Forgot to tap release preserves that deployed bundle and replaces only
+`relabelActive` with the method in this checkout. The downloaded baseline, patched
+artifact, hashes, and release record are kept locally in
+`outputs/releases/20261027-forgot-start-correction/`.
+
+Before deploying the worker from source again, reconcile those existing production
+capabilities with Git. Deploying this checkout's worker source directly would
+remove them. Frontend deployment remains independent through GitHub Pages.
+
 ## One-time production setup
 
 1. Deploy once to obtain the `workers.dev` URL.
