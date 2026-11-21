@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2eee6" />
-    <link rel="manifest" href="manifest.webmanifest?v=20261027-forgot-any-domain" />
+    <link rel="manifest" href="manifest.webmanifest?v=20261121-cut-now" />
     <title>TimeBlock Reality</title>
     <style>
       :root {
@@ -635,6 +635,25 @@
         display: none;
       }
 
+      .cut-banner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        border: 2px dashed currentColor;
+        border-radius: 14px;
+      }
+
+      .cut-banner[hidden] {
+        display: none;
+      }
+
+      .cut-banner strong {
+        display: block;
+        font-size: 0.95rem;
+      }
+
       .relabel-button {
         align-self: start;
         min-height: 36px;
@@ -847,7 +866,16 @@
           <div class="relabel-actions" id="relabelActions" hidden>
             <button class="secondary-button relabel-button" id="wrongDomainButton" type="button">Wrong tap</button>
             <button class="secondary-button relabel-button" id="forgotTapButton" type="button">Forgot to tap</button>
+            <button class="secondary-button relabel-button" id="cutNowButton" type="button">Cut now</button>
           </div>
+        </section>
+
+        <section class="cut-banner" id="cutBanner" hidden>
+          <div>
+            <span class="label">Cut saved</span>
+            <strong id="cutBannerTitle">-</strong>
+          </div>
+          <button class="secondary-button relabel-button" id="cancelCutButton" type="button">Cancel</button>
         </section>
 
         <div class="domain-grid" id="quickGrid"></div>
@@ -1074,7 +1102,7 @@
       </form>
     </section>
 
-    <script src="push-config.js?v=20261027-forgot-any-domain"></script>
+    <script src="push-config.js?v=20261121-cut-now"></script>
     <script>
       const categories = [
         { id: "bd", code: "1 BD", name: "Body & Diet" },
@@ -1152,6 +1180,10 @@
         relabelActions: document.querySelector("#relabelActions"),
         wrongDomainButton: document.querySelector("#wrongDomainButton"),
         forgotTapButton: document.querySelector("#forgotTapButton"),
+        cutNowButton: document.querySelector("#cutNowButton"),
+        cutBanner: document.querySelector("#cutBanner"),
+        cutBannerTitle: document.querySelector("#cutBannerTitle"),
+        cancelCutButton: document.querySelector("#cancelCutButton"),
         relabelSheetLabel: document.querySelector("#relabelSheetLabel"),
         relabelWhen: document.querySelector("#relabelWhen"),
 
@@ -1267,6 +1299,8 @@
         els.closeFixSheetButton.addEventListener("click", closeFixSheet);
         els.wrongDomainButton.addEventListener("click", () => openRelabelSheet("wrong"));
         els.forgotTapButton.addEventListener("click", () => openRelabelSheet("forgot"));
+        els.cutNowButton.addEventListener("click", cutActiveNow);
+        els.cancelCutButton.addEventListener("click", cancelPendingCut);
         els.closeRelabelSheetButton.addEventListener("click", closeRelabelSheet);
         els.relabelSheetScrim.addEventListener("click", closeRelabelSheet);
         els.relabelFrom.addEventListener("input", () => {
@@ -1316,9 +1350,46 @@
           button.type = "button";
           button.textContent = compact ? category.code.replace(" ", "\n") : category.code;
           button.title = category.name;
-          button.addEventListener("click", () => startQuickBlock(category.id));
+          button.addEventListener("click", () => tapDomain(category.id));
           container.append(button);
         });
+      }
+
+      // "Cut now" marks the moment a block ended before the next domain is known.
+      // The running block keeps going until a domain is tapped; that tap then
+      // switches back-dated to the cut, exactly like "Forgot to tap".
+      function activePendingCut() {
+        const cut = state.pendingCut;
+        if (!cut || !state.active || cut.activeId !== state.active.id) return null;
+        const at = new Date(cut.at);
+        if (!(at - new Date(state.active.start) >= 60 * 1000) || at > new Date()) return null;
+        return at;
+      }
+
+      function cutActiveNow() {
+        if (!state.active || isCaptureLocked()) return;
+        const at = new Date(Math.floor(Date.now() / 60000) * 60000);
+        if (at - new Date(state.active.start) < 60 * 1000) {
+          updateSyncStatus("Block is under a minute old - just tap the domain.", true);
+          return;
+        }
+        state.pendingCut = { at: at.toISOString(), activeId: state.active.id };
+        logAction(`cut ${categoryShortLabel(state.active.categoryId)} at ${formatTime(at)}`);
+        saveState();
+        render();
+      }
+
+      function cancelPendingCut() {
+        state.pendingCut = null;
+        saveState();
+        render();
+      }
+
+      function tapDomain(categoryId) {
+        const cutAt = activePendingCut();
+        state.pendingCut = null;
+        saveState();
+        startQuickBlock(categoryId, cutAt);
       }
 
       function fillSelect(select) {
@@ -2166,6 +2237,12 @@
           const relabelText = state.active.relabelPending ? " · domain not saved yet" : "";
           els.activeMeta.textContent = `Started ${formatTime(state.active.start)}${syncText}${relabelText}`;
         }
+        const cutAt = activePendingCut();
+        els.cutBanner.hidden = !cutAt;
+        if (cutAt) {
+          els.cutBannerTitle.textContent = `${categoryShortLabel(state.active.categoryId)} ends ${formatTime(cutAt)} - tap a domain`;
+        }
+        els.cutNowButton.textContent = cutAt ? "Re-cut now" : "Cut now";
         [...els.quickGrid.querySelectorAll("button")].forEach((button) => {
           const category = categories.find((item) => button.title === item.name);
           button.classList.toggle("active", state.active?.categoryId === category?.id);
@@ -3707,6 +3784,7 @@
             plan: Array.isArray(saved.plan) ? saved.plan : [],
             actual: Array.isArray(saved.actual) ? saved.actual : [],
             active: saved.active || null,
+            pendingCut: saved.pendingCut || null,
             calendars: saved.calendars || null,
             google: { ...defaultGoogleState(), ...(saved.google || {}) },
             syncQueue: Array.isArray(saved.syncQueue) ? saved.syncQueue : [],
